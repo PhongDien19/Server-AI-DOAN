@@ -21,4 +21,43 @@ const analyzeCareer = async (userData) => {
     }
 };
 
-module.exports = { analyzeCareer };
+const generateCareerTest = async (data) => {
+    try {
+        const { targetJob, hobby, age } = data;
+        const prompt = `
+            Bạn là chuyên gia nhân sự và hướng nghiệp. 
+            Dựa trên thông tin sau:
+            - Nghề nghiệp mục tiêu: ${targetJob}
+            - Sở thích: ${hobby}
+            - Độ tuổi: ${age}
+
+            Hãy tạo một bài test gồm 5 câu hỏi trắc nghiệm để kiểm tra mức độ phù hợp của người này với nghề ${targetJob}.
+            Yêu cầu:
+            1. Câu hỏi phải thực tế và liên quan đến kỹ năng cần thiết cho nghề ${targetJob}.
+            2. Trả về định dạng JSON theo cấu trúc:
+            {
+              "testName": "Bài kiểm tra mức độ phù hợp với nghề ...",
+              "questions": [
+                {
+                  "question": "Nội dung câu hỏi?",
+                  "options": ["A", "B", "C", "D"],
+                  "answer": "Đáp án đúng (A/B/C/D)"
+                }
+              ]
+            }
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        
+        // Trích xuất JSON từ text (đôi khi AI trả về markdown ```json ... ```)
+        const text = response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        return jsonMatch ? JSON.parse(jsonMatch[0]) : { error: "Không thể tạo JSON", raw: text };
+    } catch (error) {
+        console.error("AI Generate Test Error:", error);
+        throw error;
+    }
+};
+
+module.exports = { analyzeCareer, generateCareerTest };
