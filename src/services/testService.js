@@ -1,4 +1,5 @@
 const Question = require('../models/Question');
+const { setSessionContext } = require('./sessionContextStore');
 
 /**
  * Hàm lưu câu hỏi và câu trả lời trực tiếp vào bảng Question
@@ -6,11 +7,16 @@ const Question = require('../models/Question');
  * @param {number} userId - ID người dùng
  * @param {string} testName - Tên bài test
  * @param {Array} questions - Mảng câu hỏi [{ id, questionText, options, userAnswer, order }]
+ * @param {object} [userContext] - fullName, hobby, age, targetJob, educationLevel (lưu tạm theo session)
  */
-const saveQuestions = async (sessionId, userId, testName, questions) => {
+const saveQuestions = async (sessionId, userId, testName, questions, userContext) => {
   try {
     // Tự sinh mã session (như chuỗi timestamp) nếu chưa có
     const currentSessionId = sessionId || `session_${Date.now()}`;
+
+    if (userContext && typeof userContext === 'object') {
+      setSessionContext(currentSessionId, userContext);
+    }
 
     for (const q of questions) {
       if (q.id) {

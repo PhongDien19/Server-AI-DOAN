@@ -23,14 +23,27 @@ const checkLogin = async (username, password) => {
       return { success: false, message: 'Mật khẩu không chính xác' };
     }
 
-    user.lastLoginAt = new Date();
-    await user.save();
+            user.lastLoginAt = new Date();
+            await user.save();
 
-    return {
-      success: true,
-      message: 'Đăng nhập thành công',
-      user: { id: user.id, email: user.email, role: user.role, isActive: user.isActive }
-    };
+            const profile = await UserProfile.findOne({
+                where: { userId: user.id },
+                attributes: [
+                    'fullName',
+                    'targetJob',
+                    'educationLevel',
+                    'careerFitScore',
+                    'careerFitResult',
+                    'interests',
+                ],
+            });
+
+            return {
+                success: true,
+                message: 'Đăng nhập thành công',
+                user: { id: user.id, email: user.email, role: user.role, isActive: user.isActive },
+                profile: profile ? profile.toJSON() : null,
+            };
   } catch (error) {
     console.error('Lỗi trong quá trình đăng nhập:', error);
     return { success: false, message: 'Lỗi hệ thống' };

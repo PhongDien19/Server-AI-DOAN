@@ -39,12 +39,16 @@ async function getCareerAdvice(info) {
 async function generateCareerTest(data) {
     try {
         if (!data || Object.keys(data).length === 0) {
-            throw new Error("Không nhận được dữ liệu đầu vào. Vui lòng gửi JSON có chứa targetJob, hobby, age.");
+            throw new Error("Không nhận được dữ liệu đầu vào. Vui lòng gửi JSON có chứa targetJob, hobby, age, educationLevel.");
         }
 
-        const { targetJob, hobby, age } = data;
+        const { targetJob, hobby, age, educationLevel } = data;
+        if (targetJob === undefined || hobby === undefined || age === undefined || educationLevel === undefined) {
+            throw new Error("Thiếu trường bắt buộc: targetJob, hobby, age, educationLevel.");
+        }
+
         const scaleJson = JSON.stringify(CAREER_FIT_LIKERT_OPTIONS);
-        const prompt = `Bạn là chuyên gia hướng nghiệp. Dựa trên: nghề mục tiêu "${targetJob}", sở thích "${hobby}", độ tuổi ${age}.
+        const prompt = `Bạn là chuyên gia hướng nghiệp. Dựa trên: nghề mục tiêu "${targetJob}", sở thích "${hobby}", độ tuổi ${age}, trình độ học vấn "${educationLevel}".
 
 Tạo đúng 5 câu hỏi đánh giá mức độ phù hợp với nghề đó. Mỗi câu mô tả một tình huống, đặc điểm công việc, kỹ năng hoặc môi trường liên quan nghề — người làm bài chọn mức cảm nhận của họ (không có đáp án đúng/sai).
 
@@ -90,8 +94,9 @@ Trả về một object JSON duy nhất có dạng:
  * Đánh giá mức độ phù hợp của user với nghề dựa trên câu trả lời
  * @param {string} testName - Tên bài test
  * @param {Array} questions - Mảng chứa { questionText, userAnswer }
+ * @param {object} [userContext] - targetJob, educationLevel, hobby, age (và tùy chọn fullName)
  */
-async function evaluateCareerTest(testName, questions) {
+async function evaluateCareerTest(testName, questions, userContext = {}) {
     try {
         if (!questions || questions.length === 0) {
             throw new Error("Không có dữ liệu câu hỏi và câu trả lời để đánh giá.");
@@ -99,11 +104,24 @@ async function evaluateCareerTest(testName, questions) {
 
         const qaList = questions.map((q, idx) => `Câu ${idx + 1}: ${q.questionText}\nTrả lời: ${q.userAnswer}`).join('\n\n');
 
-        const prompt = `Bạn là chuyên gia hướng nghiệp. Người dùng đã làm bài test tên là "${testName}" và trả lời các câu hỏi như sau:
+        const ctx = userContext || {};
+        const profileLine = [
+            ctx.targetJob && `Nghề mong muốn: ${ctx.targetJob}`,
+            ctx.educationLevel && `Trình độ học vấn: ${ctx.educationLevel}`,
+            ctx.hobby != null && ctx.hobby !== "" && `Sở thích: ${ctx.hobby}`,
+            ctx.age != null && ctx.age !== "" && `Tuổi: ${ctx.age}`,
+            ctx.fullName && `Tên: ${ctx.fullName}`,
+        ].filter(Boolean).join("\n");
 
+        const prompt = `Bạn là chuyên gia hướng nghiệp. Người dùng đã làm bài đánh giá tên "${testName}".
+
+Thông tin đăng ký (tham chiếu khi chấm):
+${profileLine || "(không có thêm)"}
+
+Các câu hỏi và câu trả lời theo thang mức độ thích/phù hợp:
 ${qaList}
 
-Dựa trên các câu trả lời này, hãy phân tích và đánh giá xem người dùng có phù hợp với nghề nghiệp này không.
+Dựa trên thông tin trên, hãy phân tích mức độ phù hợp với **nghề mong muốn** của người dùng.
 
 BẮT BUỘC:
 Trả về một object JSON duy nhất có định dạng:

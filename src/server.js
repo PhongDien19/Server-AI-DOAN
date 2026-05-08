@@ -7,6 +7,9 @@ const { getCareerAdvice, generateCareerTest, evaluateCareerTest } = require('./s
 // const { checkLogin, socialLogin, register } = require('./services/authService');
 const { checkLogin, register } = require('./services/authService');
 const { saveQuestions, getQuestions } = require('./services/testService');
+const { getSessionContext, setPendingEvaluation } = require('./services/sessionContextStore');
+const { claimAssessmentResult } = require('./services/assessmentService');
+const { getProfile, updateProfile, getHistory } = require('./services/profileService');
 
 // Import DB config
 const sequelize = require('./config/database');
@@ -101,15 +104,15 @@ app.post('/api/login/facebook', async (req, res) => {
 });
 */
 
-// 5. Endpoint lưu câu hỏi và câu trả lời của User
+// 5. Endpoint lưu câu hỏi và câu trả lời của User (có thể kèm userContext: tên, tuổi, sở thích, nghề, học vấn — lưu tạm theo session)
 app.post('/api/test/questions', async (req, res) => {
-  const { sessionId, userId, testName, questions } = req.body;
+  const { sessionId, userId, testName, questions, userContext } = req.body;
   
   if (!questions || !Array.isArray(questions)) {
     return res.status(400).json({ success: false, message: 'Thiếu mảng questions' });
   }
 
-  const result = await saveQuestions(sessionId, userId, testName, questions);
+  const result = await saveQuestions(sessionId, userId, testName, questions, userContext);
   res.json(result);
 });
 
@@ -120,11 +123,10 @@ app.get('/api/test/questions/:sessionId', async (req, res) => {
   res.json(result);
 });
 
-// 7. Endpoint nhờ AI chấm điểm bài test
+// 7. Chấm điểm bằng AI — chỉ lưu kết quả tạm; không trả điểm. User phải đăng nhập và gọi /api/assessment/claim.
 app.post('/api/test/evaluate/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   
-  // 1. Lấy tất cả câu hỏi & câu trả lời từ CSDL
   const result = await getQuestions(sessionId);
   if (!result.success || result.data.length === 0) {
     return res.status(404).json({ success: false, message: 'Không tìm thấy dữ liệu bài test' });
@@ -132,7 +134,6 @@ app.post('/api/test/evaluate/:sessionId', async (req, res) => {
 
   const questions = result.data;
   
-  // Kiểm tra xem user đã trả lời đủ chưa
   const isCompleted = questions.every(q => q.userAnswer !== null && q.userAnswer !== '');
   if (!isCompleted) {
     return res.status(400).json({ success: false, message: 'Người dùng chưa trả lời hết các câu hỏi' });
@@ -140,13 +141,59 @@ app.post('/api/test/evaluate/:sessionId', async (req, res) => {
 
   const testName = questions[0].testName || 'Bài test';
 
-  // 2. Chấm điểm bằng AI
+  const plainQuestions = questions.map(q => ({
+    questionText: q.questionText,
+    userAnswer: q.userAnswer,
+  }));
+
   try {
-    const evaluation = await evaluateCareerTest(testName, questions);
-    res.json({ success: true, evaluation });
+    const ctx = getSessionContext(sessionId) || {};
+    const evaluation = await evaluateCareerTest(testName, plainQuestions, ctx);
+
+    if (evaluation.error) {
+      return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: evaluation });
+    }
+
+    setPendingEvaluation(sessionId, evaluation, ctx);
+
+    res.json({
+      success: true,
+      requiresLogin: true,
+      sessionId,
+      message: 'Đăng nhập hoặc đăng ký, sau đó gọi POST /api/assessment/claim với sessionId và userId để xem điểm và lưu vào hồ sơ.',
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// 8. Sau khi đăng nhập: nhận điểm và ghi vào UserProfile + gán userId cho các dòng Question
+app.post('/api/assessment/claim', async (req, res) => {
+  const { sessionId, userId } = req.body;
+  const out = await claimAssessmentResult(sessionId, userId);
+  if (!out.success) {
+    const code = out.message && out.message.includes('Không có kết quả') ? 404 : 400;
+    return res.status(code).json(out);
+  }
+  res.json(out);
+});
+
+// 9. Endpoint lấy thông tin Profile
+app.get('/api/profile/:userId', async (req, res) => {
+  const result = await getProfile(req.params.userId);
+  res.status(result.success ? 200 : 404).json(result);
+});
+
+// 10. Endpoint cập nhật Profile
+app.put('/api/profile/:userId', async (req, res) => {
+  const result = await updateProfile(req.params.userId, req.body);
+  res.status(result.success ? 200 : 400).json(result);
+});
+
+// 11. Endpoint lấy lịch sử làm bài test (Các câu hỏi/trả lời cũ theo sessionId)
+app.get('/api/history/:userId', async (req, res) => {
+  const result = await getHistory(req.params.userId);
+  res.status(result.success ? 200 : 500).json(result);
 });
 
 // Route mặc định kiểm tra server

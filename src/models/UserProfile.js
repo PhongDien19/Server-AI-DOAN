@@ -37,6 +37,14 @@ const UserProfile = sequelize.define('UserProfile', {
   phone: {
     type: DataTypes.STRING,
   },
+  careerFitScore: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  careerFitResult: {
+    type: DataTypes.JSON,
+    allowNull: true,
+  },
 }, {
   timestamps: false,
   freezeTableName: true,
