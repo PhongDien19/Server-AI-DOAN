@@ -8,6 +8,15 @@ const model = genAI.getGenerativeModel({
         responseMimeType: "application/json",
     }
 });
+
+/** Thang mức độ phù hợp / cảm xúc với từng khía cạnh nghề — thứ tự: thấp → cao (điểm tương ứng 1–5). */
+const CAREER_FIT_LIKERT_OPTIONS = [
+    "Không thích",
+    "Ít thích",
+    "Bình thường",
+    "Thích",
+    "Rất thích",
+];
 /**
  * Tư vấn nghề nghiệp tổng quát
  */
@@ -25,7 +34,7 @@ async function getCareerAdvice(info) {
 }
 
 /**
- * Tạo bài test câu hỏi trắc nghiệm
+ * Tạo bài đánh giá phù hợp nghề: câu hỏi + thang Likert (không thích → rất thích).
  */
 async function generateCareerTest(data) {
     try {
@@ -34,23 +43,104 @@ async function generateCareerTest(data) {
         }
 
         const { targetJob, hobby, age } = data;
-        const prompt = `
-      Bạn là chuyên gia nhân sự. Dựa trên nghề ${targetJob}, sở thích ${hobby}, tuổi ${age}.
-      Tạo 5 câu hỏi trắc nghiệm kiểm tra độ phù hợp.
-      Trả về JSON: {"testName": "...", "questions": [{"question": "...", "options": ["A", "B", "C", "D"], "answer": "A"}]}
-    `;
+        const scaleJson = JSON.stringify(CAREER_FIT_LIKERT_OPTIONS);
+        const prompt = `Bạn là chuyên gia hướng nghiệp. Dựa trên: nghề mục tiêu "${targetJob}", sở thích "${hobby}", độ tuổi ${age}.
+
+Tạo đúng 5 câu hỏi đánh giá mức độ phù hợp với nghề đó. Mỗi câu mô tả một tình huống, đặc điểm công việc, kỹ năng hoặc môi trường liên quan nghề — người làm bài chọn mức cảm nhận của họ (không có đáp án đúng/sai).
+
+BẮT BUỘC:
+- Trường "options" trong JSON phải là mảng CHÍNH XÁC các chuỗi sau (cùng thứ tự): ${scaleJson}
+- Không dùng nhãn khác, không thêm/bớt lựa chọn.
+- Không dùng A/B/C/D; không có trường "answer".
+
+Trả về một object JSON duy nhất có dạng:
+{
+  "testName": "string, tiêu đề ngắn cho bài đánh giá",
+  "options": ${scaleJson},
+  "questions": [
+    { "question": "string, câu hỏi gợi mức độ thích/phù hợp với khía cạnh cụ thể của nghề" }
+  ]
+}`;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        const text = response.text();
+        const text = response.text().trim();
 
-        // Trích xuất JSON từ phản hồi của AI
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        return jsonMatch ? JSON.parse(jsonMatch[0]) : { error: "Không thể tạo JSON", raw: text };
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+        }
+
+        if (!parsed || !Array.isArray(parsed.questions)) {
+            return { error: "Không thể tạo JSON", raw: text };
+        }
+
+        parsed.options = [...CAREER_FIT_LIKERT_OPTIONS];
+        return parsed;
     } catch (error) {
         console.error("Lỗi AI (Test):", error);
         throw error;
     }
 }
 
-module.exports = { getCareerAdvice, generateCareerTest };
+/**
+ * Đánh giá mức độ phù hợp của user với nghề dựa trên câu trả lời
+ * @param {string} testName - Tên bài test
+ * @param {Array} questions - Mảng chứa { questionText, userAnswer }
+ */
+async function evaluateCareerTest(testName, questions) {
+    try {
+        if (!questions || questions.length === 0) {
+            throw new Error("Không có dữ liệu câu hỏi và câu trả lời để đánh giá.");
+        }
+
+        const qaList = questions.map((q, idx) => `Câu ${idx + 1}: ${q.questionText}\nTrả lời: ${q.userAnswer}`).join('\n\n');
+
+        const prompt = `Bạn là chuyên gia hướng nghiệp. Người dùng đã làm bài test tên là "${testName}" và trả lời các câu hỏi như sau:
+
+${qaList}
+
+Dựa trên các câu trả lời này, hãy phân tích và đánh giá xem người dùng có phù hợp với nghề nghiệp này không.
+
+BẮT BUỘC:
+Trả về một object JSON duy nhất có định dạng:
+{
+  "score": number, // ĐIỂM SỐ TỪ 1 ĐẾN 5 (thể hiện mức độ phù hợp). Có thể là số thập phân nhưng CHỈ GIỚI HẠN Ở MỨC 0.5 (Ví dụ: 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0).
+  "summary": "string, Đánh giá tổng quan ngắn gọn (tối đa 3-4 câu)",
+  "strengths": ["string", "string"], // Những điểm phù hợp thể hiện qua bài test
+  "weaknesses": ["string", "string"], // Những điểm chưa phù hợp cần cân nhắc
+  "advice": "string, Lời khuyên cuối cùng"
+}`;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text().trim();
+
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+        }
+
+        if (!parsed) {
+            return { error: "Không thể tạo JSON", raw: text };
+        }
+
+        return parsed;
+    } catch (error) {
+        console.error("Lỗi AI (Evaluate):", error);
+        throw error;
+    }
+}
+
+module.exports = {
+    getCareerAdvice,
+    generateCareerTest,
+    evaluateCareerTest,
+    CAREER_FIT_LIKERT_OPTIONS,
+};
