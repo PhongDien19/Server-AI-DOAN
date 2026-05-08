@@ -23,7 +23,7 @@ app.use(express.json());
 
 // 1. Endpoint tư vấn nghề nghiệp tổng quát (POST)
 app.post('/api/consult', async (req, res) => {
-  const { info } = req.body; 
+  const { info } = req.body;
   const advice = await getCareerAdvice(info);
   res.json({ advice });
 });
@@ -41,7 +41,7 @@ app.post('/api/generate-test', async (req, res) => {
 // 2.5. Endpoint đăng ký tài khoản mới (Email / Password)
 app.post('/api/register', async (req, res) => {
   const { email, password, fullName } = req.body;
-  
+
   if (!email || !password) {
     return res.status(400).json({ success: false, message: 'Vui lòng nhập đủ email và mật khẩu' });
   }
@@ -50,14 +50,14 @@ app.post('/api/register', async (req, res) => {
   if (result.success) {
     res.status(201).json(result);
   } else {
-    res.status(400).json(result); 
+    res.status(400).json(result);
   }
 });
 
 // 3. Endpoint đăng nhập thường (Email / Password)
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
-  
+
   if (!username || !password) {
     return res.status(400).json({ success: false, message: 'Vui lòng nhập đủ tài khoản và mật khẩu' });
   }
@@ -107,7 +107,7 @@ app.post('/api/login/facebook', async (req, res) => {
 // 5. Endpoint lưu câu hỏi và câu trả lời của User (có thể kèm userContext: tên, tuổi, sở thích, nghề, học vấn — lưu tạm theo session)
 app.post('/api/test/questions', async (req, res) => {
   const { sessionId, userId, testName, questions, userContext } = req.body;
-  
+
   if (!questions || !Array.isArray(questions)) {
     return res.status(400).json({ success: false, message: 'Thiếu mảng questions' });
   }
@@ -126,14 +126,14 @@ app.get('/api/test/questions/:sessionId', async (req, res) => {
 // 7. Chấm điểm bằng AI — chỉ lưu kết quả tạm; không trả điểm. User phải đăng nhập và gọi /api/assessment/claim.
 app.post('/api/test/evaluate/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
-  
+
   const result = await getQuestions(sessionId);
   if (!result.success || result.data.length === 0) {
     return res.status(404).json({ success: false, message: 'Không tìm thấy dữ liệu bài test' });
   }
 
   const questions = result.data;
-  
+
   const isCompleted = questions.every(q => q.userAnswer !== null && q.userAnswer !== '');
   if (!isCompleted) {
     return res.status(400).json({ success: false, message: 'Người dùng chưa trả lời hết các câu hỏi' });
@@ -210,4 +210,26 @@ app.listen(PORT, async () => {
     console.error("Lỗi kết nối database:", error);
   }
   console.log(`Server AI đang chạy tại cổng ${PORT}`);
+
+  // Thử lấy đường dẫn ngrok nếu đang chạy dev:ngrok
+  setTimeout(() => {
+    const http = require('http');
+    http.get('http://127.0.0.1:4040/api/tunnels', (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const httpsTunnel = parsed.tunnels.find(t => t.public_url && t.public_url.startsWith('https'));
+          if (httpsTunnel) {
+            console.log(`\n=================================================`);
+            console.log(`🚀 Ngrok Public URL: ${httpsTunnel.public_url}`);
+            console.log(`=================================================\n`);
+          }
+        } catch (e) {}
+      });
+    }).on('error', () => {
+      // Bỏ qua nếu ngrok không chạy
+    });
+  }, 3000); // Chờ 3s để ngrok kịp khởi động
 });
