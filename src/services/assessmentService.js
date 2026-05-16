@@ -62,22 +62,85 @@ async function claimAssessmentResult(sessionId, userId) {
       ? { hobbies: ctx.hobby }
       : profile.interests;
 
+  // Xác định loại test từ testName hoặc dữ liệu evaluation
+  const testType = determineTestType(testNameSaved, evaluation);
+
   try {
-    await profile.update({
+    const updateData = {
       fullName: (ctx.fullName && String(ctx.fullName).trim()) || profile.fullName,
       targetJob: (ctx.targetJob && String(ctx.targetJob).trim()) || profile.targetJob,
       educationLevel:
         (ctx.educationLevel && String(ctx.educationLevel).trim()) || profile.educationLevel,
       interests,
-      careerFitScore: evaluation.score,
-      careerFitResult: {
-        summary: evaluation.summary,
-        strengths: evaluation.strengths,
-        weaknesses: evaluation.weaknesses,
-        advice: evaluation.advice,
-        testName: testNameSaved || undefined,
-      },
-    });
+    };
+
+    // Cập nhật dữ liệu theo loại test
+    switch (testType) {
+      case 'career':
+        updateData.careerFitScore = evaluation.score;
+        updateData.careerFitResult = {
+          summary: evaluation.summary,
+          strengths: evaluation.strengths,
+          weaknesses: evaluation.weaknesses,
+          advice: evaluation.advice,
+          testName: testNameSaved || undefined,
+        };
+        break;
+
+      case 'holland':
+        updateData.hollandScores = evaluation.hollandScores;
+        updateData.hollandResult = {
+          topTypes: evaluation.topTypes,
+          summary: evaluation.summary,
+          careerSuggestions: evaluation.careerSuggestions,
+          advice: evaluation.advice,
+          testName: testNameSaved || undefined,
+        };
+        break;
+
+      case 'personality':
+        updateData.personalityScores = evaluation.big5Scores;
+        updateData.personalityResult = {
+          suggestedMBTI: evaluation.suggestedMBTI,
+          personalitySummary: evaluation.personalitySummary,
+          strengths: evaluation.strengths,
+          careerFit: evaluation.careerFit,
+          developmentAdvice: evaluation.developmentAdvice,
+          testName: testNameSaved || undefined,
+        };
+        updateData.mbtiType = evaluation.suggestedMBTI;
+        break;
+
+      case 'cognitive':
+        updateData.cognitiveScores = evaluation.cognitiveScores;
+        updateData.cognitiveResult = {
+          overallScore: evaluation.overallScore,
+          correctPercentage: evaluation.correctPercentage,
+          strengths: evaluation.strengths,
+          weaknesses: evaluation.weaknesses,
+          careerImplications: evaluation.careerImplications,
+          improvementSuggestions: evaluation.improvementSuggestions,
+          testName: testNameSaved || undefined,
+        };
+        updateData.cognitiveOverallScore = evaluation.overallScore;
+        updateData.cognitiveCorrectPercentage = evaluation.correctPercentage;
+        break;
+
+      case 'values':
+        updateData.valuesScores = evaluation.valuesScores;
+        updateData.valuesResult = {
+          topValues: evaluation.topValues,
+          valuesSummary: evaluation.valuesSummary,
+          workEnvironment: evaluation.workEnvironment,
+          advice: evaluation.advice,
+          testName: testNameSaved || undefined,
+        };
+        updateData.topValues = evaluation.topValues;
+        updateData.valuesSummary = evaluation.valuesSummary;
+        break;
+    }
+
+    await profile.update(updateData);
 
     await Question.update({ userId: uid }, { where: { sessionId } });
 
@@ -96,6 +159,33 @@ async function claimAssessmentResult(sessionId, userId) {
     evaluation,
     profile: profile.toJSON(),
   };
+}
+
+/**
+ * Xác định loại test từ testName hoặc dữ liệu evaluation
+ */
+function determineTestType(testName, evaluation) {
+  if (!testName) return 'career';
+
+  const name = testName.toLowerCase();
+
+  if (name.includes('holland') || evaluation.hollandScores) {
+    return 'holland';
+  }
+
+  if (name.includes('personality') || name.includes('big 5') || name.includes('mbti') || evaluation.big5Scores) {
+    return 'personality';
+  }
+
+  if (name.includes('cognitive') || name.includes('năng lực') || evaluation.cognitiveScores) {
+    return 'cognitive';
+  }
+
+  if (name.includes('values') || name.includes('giá trị') || evaluation.valuesScores) {
+    return 'values';
+  }
+
+  return 'career'; // Default
 }
 
 module.exports = { claimAssessmentResult };

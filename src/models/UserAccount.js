@@ -44,6 +44,10 @@ const UserAccount = sequelize.define('UserAccount', {
     type: DataTypes.STRING,
     defaultValue: 'user',
   },
+  tokenCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 3, // Each user gets 3 tokens upon registration
+  },
 }, {
   timestamps: false,
   freezeTableName: true,

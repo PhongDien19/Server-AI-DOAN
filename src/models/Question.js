@@ -8,7 +8,7 @@ const Question = sequelize.define('Question', {
     primaryKey: true,
   },
   sessionId: {
-    type: DataTypes.STRING, // Dùng để gom nhóm 5 câu hỏi của cùng 1 lần làm bài
+    type: DataTypes.STRING, // Dùng để gom nhóm câu hỏi của cùng 1 lần làm bài
   },
   userId: {
     type: DataTypes.INTEGER, // User làm bài (nếu có)
@@ -16,14 +16,38 @@ const Question = sequelize.define('Question', {
   testName: {
     type: DataTypes.STRING,
   },
+  testType: {
+    type: DataTypes.ENUM('career', 'holland', 'personality', 'cognitive', 'values'), // Loại test
+    defaultValue: 'career',
+  },
   questionText: {
     type: DataTypes.TEXT,
   },
   options: {
-    type: DataTypes.JSON, 
+    type: DataTypes.JSON,
   },
   userAnswer: {
     type: DataTypes.TEXT, // Lưu trực tiếp câu trả lời của user vào đây
+    allowNull: true,
+  },
+  correctAnswer: {
+    type: DataTypes.STRING, // Đáp án đúng (cho test cognitive)
+    allowNull: true,
+  },
+  hollandType: {
+    type: DataTypes.ENUM('R', 'I', 'A', 'S', 'E', 'C'), // Cho test Holland
+    allowNull: true,
+  },
+  trait: {
+    type: DataTypes.ENUM('openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'), // Cho test Big 5
+    allowNull: true,
+  },
+  valueType: {
+    type: DataTypes.ENUM('stability', 'achievement', 'balance', 'contribution', 'autonomy', 'relationships'), // Cho test Values
+    allowNull: true,
+  },
+  questionType: {
+    type: DataTypes.ENUM('logical', 'verbal', 'numerical', 'analytical'), // Cho test cognitive
     allowNull: true,
   },
   order: {
