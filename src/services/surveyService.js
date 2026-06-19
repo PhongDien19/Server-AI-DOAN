@@ -4,33 +4,152 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Question = require("../models/Question");
 const SurveyFeedback = require("../models/SurveyFeedback");
 const { setSessionContext, getSessionContext, setPendingEvaluation } = require("./sessionContextStore");
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.5 } });
+
+// Ghi đè phương thức generateContent để tự động retry khi gặp lỗi (ví dụ lỗi 503 hoặc rate limit)
+const originalGenerateContent = model.generateContent.bind(model);
+model.generateContent = async function (prompt, retries = 3, delayMs = 1500) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await originalGenerateContent(prompt);
+        } catch (error) {
+            console.warn(`[Gemini API - Survey] Thử lại lần ${attempt}/${retries} do lỗi:`, error.message || error);
+            if (attempt === retries) {
+                throw error;
+            }
+            // Chờ với thời gian tăng dần (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+        }
+    }
+};
 
 const generateSessionId = () => {
     return 'survey_' + Math.random().toString(36).substr(2, 9);
 };
-
 const initSurvey = async (mode, targetCareer) => {
     try {
-        const questionBankPath = path.join(__dirname, '../data/questionBank.json');
-        const questionBankRaw = fs.readFileSync(questionBankPath, 'utf8');
-        const surveyData = JSON.parse(questionBankRaw);
-
         const sessionId = generateSessionId();
+        let surveyData;
 
-        // Lưu câu hỏi vào database tạm thời
-        const questionRecords = surveyData.questions.map((q, index) => ({
-            sessionId,
-            testName: surveyData.testName,
-            testType: 'career', // fallback to career type
-            questionText: q.questionText,
-            options: q.options,
-            order: index + 1
-        }));
-        
-        await Question.bulkCreate(questionRecords);
+        if (mode === 'Discovery' || !targetCareer) {
+            // Chế độ Khám phá: sử dụng bộ câu hỏi tĩnh
+            const questionBankPath = path.join(__dirname, '../data/questionBank.json');
+            const questionBankRaw = fs.readFileSync(questionBankPath, 'utf8');
+            surveyData = JSON.parse(questionBankRaw);
+            
+            const questionRecords = surveyData.questions.map((q, index) => ({
+                sessionId,
+                testName: surveyData.testName,
+                testType: 'career',
+                questionText: q.questionText,
+                options: q.options,
+                order: index + 1
+            }));
+            await Question.bulkCreate(questionRecords);
+        } else {
+            // Chế độ Mục tiêu: kiểm tra xem DB đã có bộ câu hỏi của ngành nghề này chưa
+            const formattedTestName = `Khảo sát nghề ${targetCareer}`;
+            
+            // Tìm 1 câu hỏi mẫu có testName tương ứng để xác định sessionId cũ đã tồn tại
+            const sampleQuestion = await Question.findOne({
+                where: {
+                    testType: 'career',
+                    testName: formattedTestName
+                }
+            });
+
+            let questionsToCopy = [];
+            if (sampleQuestion) {
+                // Nếu tìm thấy, lấy toàn bộ câu hỏi thuộc sessionId đó
+                questionsToCopy = await Question.findAll({
+                    where: {
+                        testType: 'career',
+                        testName: formattedTestName,
+                        sessionId: sampleQuestion.sessionId
+                    },
+                    order: [['order', 'ASC']]
+                });
+            }
+
+            if (questionsToCopy.length > 0) {
+                console.log(`[Survey] Tìm thấy bộ câu hỏi sẵn cho ngành: ${targetCareer}. Sao chép từ session: ${sampleQuestion.sessionId}`);
+                
+                surveyData = {
+                    testName: formattedTestName,
+                    options: questionsToCopy[0].options, // lấy list options mẫu
+                    questions: questionsToCopy.map(q => ({
+                        questionText: q.questionText,
+                        options: q.options
+                    }))
+                };
+
+                const questionRecords = questionsToCopy.map((q, index) => ({
+                    sessionId,
+                    testName: formattedTestName,
+                    testType: 'career',
+                    questionText: q.questionText,
+                    options: q.options,
+                    order: index + 1
+                }));
+                await Question.bulkCreate(questionRecords);
+            } else {
+                console.log(`[Survey] Chưa có câu hỏi cho ngành: ${targetCareer}. Bắt đầu gọi AI để tạo bộ câu hỏi.`);
+                // Nếu không tìm thấy, gọi AI tạo bộ câu hỏi riêng cho ngành đó
+                const prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based) dành riêng cho người dùng đang muốn theo đuổi ngành nghề mục tiêu là "${targetCareer}".
+                
+Yêu cầu bắt buộc tuân thủ:
+1. Thiết kế đúng 15 câu hỏi dựa trên 3 trụ cột: John Holland (RIASEC), Big Five Personality Traits, và Social Cognitive Career Theory (SCCT).
+   - 5 câu đầu (từ câu 1-5): Đánh giá mức độ yêu thích với các hoạt động, công việc cụ thể của ngành "${targetCareer}" (Interest Fit - Holland).
+   - 5 câu tiếp theo (từ câu 6-10): Đánh giá hành vi, phản ứng, tính cách phù hợp với áp lực, môi trường làm việc đặc thù của ngành "${targetCareer}" (Behavioral Fit - Big Five).
+   - 5 câu cuối (từ câu 11-15): Đánh giá năng lực tự nhận thức và niềm tin tự hiệu quả đối với các kỹ năng chuyên môn của ngành "${targetCareer}" (Efficacy Fit - SCCT).
+2. Đối chiếu chéo: Các tình huống phải có sự liên kết, đối chiếu chéo với nhau để kiểm tra độ tin cậy và tính nhất quán của câu trả lời.
+3. Thang đo Likert 5 mức độ: Mỗi câu hỏi phải có đúng 5 lựa chọn tương ứng với điểm trọng số từ 1 (Thấp/Không đồng ý/Tránh né) đến 5 (Cao/Rất đồng ý/Chủ động). Câu trả lời hiển thị dạng text tự nhiên (Ví dụ: "Hoàn toàn không phù hợp", "Có thể thử", "Hoàn toàn sẵn sàng").
+
+Yêu cầu trả về định dạng JSON chuẩn xác như sau:
+{
+  "testName": "Khảo sát nghề ${targetCareer}",
+  "questions": [
+    {
+      "questionText": "Tình huống cụ thể liên quan đến ngành ${targetCareer}... Bạn sẽ làm gì?",
+      "options": [
+         {"text": "Mô tả lựa chọn tương ứng mức 1", "weight": 1},
+         {"text": "Mô tả lựa chọn tương ứng mức 2", "weight": 2},
+         {"text": "Mô tả lựa chọn tương ứng mức 3", "weight": 3},
+         {"text": "Mô tả lựa chọn tương ứng mức 4", "weight": 4},
+         {"text": "Mô tả lựa chọn tương ứng mức 5", "weight": 5}
+      ]
+    }
+  ]
+}
+Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+
+                const aiResult = await model.generateContent(prompt);
+                let text = aiResult.response.text().trim();
+                
+                // Trích xuất JSON từ phản hồi AI
+                if (text.startsWith('```json')) {
+                    text = text.substring(7, text.length - 3).trim();
+                } else if (text.startsWith('```')) {
+                    text = text.substring(3, text.length - 3).trim();
+                }
+                
+                const generatedSurvey = JSON.parse(text);
+                
+                // Chuẩn hóa và lưu vào DB
+                const questionRecords = generatedSurvey.questions.map((q, index) => ({
+                    sessionId,
+                    testName: formattedTestName,
+                    testType: 'career',
+                    questionText: q.questionText,
+                    options: q.options,
+                    order: index + 1
+                }));
+                await Question.bulkCreate(questionRecords);
+
+                surveyData = generatedSurvey;
+            }
+        }
 
         // Lưu thông tin context vào sessionContextStore
         setSessionContext(sessionId, { mode, targetCareer });

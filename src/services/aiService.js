@@ -10,6 +10,23 @@ const model = genAI.getGenerativeModel({
     }
 });
 
+// Ghi đè phương thức generateContent để tự động retry khi gặp lỗi (ví dụ lỗi 503 hoặc rate limit)
+const originalGenerateContent = model.generateContent.bind(model);
+model.generateContent = async function (prompt, retries = 3, delayMs = 1500) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await originalGenerateContent(prompt);
+        } catch (error) {
+            console.warn(`[Gemini API] Thử lại lần ${attempt}/${retries} do lỗi:`, error.message || error);
+            if (attempt === retries) {
+                throw error;
+            }
+            // Chờ với thời gian tăng dần (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+        }
+    }
+};
+
 // Simple cache để tránh gọi API trùng lặp
 const responseCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 phút
