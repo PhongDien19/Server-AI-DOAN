@@ -31,6 +31,7 @@ const askChatbot = async (userId, question) => {
         return {
             success: true,
             answer,
+            reply: answer,
             remainingTokens: user.tokenCount
         };
     } catch (error) {

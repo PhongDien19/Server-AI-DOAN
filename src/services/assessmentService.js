@@ -79,17 +79,8 @@ async function claimAssessmentResult(sessionId, userId) {
       case 'career':
         updateData.careerFitScore = evaluation.score;
         updateData.careerFitResult = {
-          summary: evaluation.summary,
-          strengths: evaluation.strengths,
-          weaknesses: evaluation.weaknesses,
-          advice: evaluation.advice,
+          ...evaluation,
           testName: testNameSaved || undefined,
-          roadmap: evaluation.roadmap,
-          certificates: evaluation.certificates,
-          onetMatches: evaluation.onetMatches,
-          deepScanAnalysis: evaluation.deepScanAnalysis,
-          pivotSuggestions: evaluation.pivotSuggestions,
-          status: evaluation.status
         };
         break;
 

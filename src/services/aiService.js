@@ -151,7 +151,26 @@ async function getCareerAdvice(info) {
     if (cached) return cached;
 
     try {
-        const prompt = `Bạn là chuyên gia hướng nghiệp. Tư vấn nghề nghiệp dựa trên: ${JSON.stringify(info)}. Trả về tư vấn chuyên sâu, ngắn gọn trong 200-300 từ.`;
+        const query = info && info.question ? info.question : (typeof info === 'string' ? info : JSON.stringify(info));
+        const context = (info && info.userContext) || {};
+        
+        const contextStr = [
+            context.educationLevel && `Học vấn: ${context.educationLevel}`,
+            context.age && `Tuổi: ${context.age}`,
+            context.hobby && `Sở thích: ${context.hobby}`
+        ].filter(Boolean).join(', ');
+
+        const prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc. 
+Hãy trả lời trực tiếp câu hỏi/yêu cầu sau của người dùng: "${query}".
+
+Thông tin bối cảnh của người dùng (chỉ sử dụng để điều chỉnh giọng điệu và mức độ tư vấn cho phù hợp, tránh gây mâu thuẫn):
+- ${contextStr || "Không có thông tin thêm"}
+${context.targetJob ? `- Ngành nghề mục tiêu hiện tại trong hồ sơ của họ (nhưng chỉ đề cập hoặc so sánh nếu câu hỏi của người dùng có liên quan trực tiếp đến việc chọn/chuyển đổi ngành nghề): ${context.targetJob}` : ''}
+
+Yêu cầu tư vấn:
+- Trả lời trực tiếp, chính xác vào câu hỏi/ngành nghề mà người dùng đang hỏi. Ví dụ, nếu họ hỏi về "kỹ sư xây dựng", hãy tư vấn về ngành kỹ sư xây dựng, không tư vấn về lập trình hay các ngành khác trừ khi họ yêu cầu so sánh.
+- Tư vấn chuyên sâu, thiết thực, có tính định hướng và truyền cảm hứng.
+- Ngắn gọn trong khoảng 200 - 300 từ.`;
 
         const result = await Promise.race([
             model.generateContent(prompt),

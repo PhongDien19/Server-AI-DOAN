@@ -31,6 +31,15 @@ function createMockModel(modelName) {
       return this;
     }
 
+    async reload() {
+      const list = mockDatabases[modelName];
+      const match = list.find(item => String(item.id) === String(this.id));
+      if (match) {
+        Object.assign(this, match);
+      }
+      return this;
+    }
+
     toJSON() {
       const plain = {};
       for (const key of Object.keys(this)) {
@@ -48,6 +57,13 @@ function createMockModel(modelName) {
           return String(item[key]) === String(value);
         });
       });
+      return match ? new Model(match) : null;
+    }
+
+    static async findByPk(id) {
+      if (id == null) return null;
+      const list = mockDatabases[modelName];
+      const match = list.find(item => String(item.id) === String(id));
       return match ? new Model(match) : null;
     }
 
