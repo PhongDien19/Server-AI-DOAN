@@ -1,0 +1,170 @@
+{
+  "testName": "Khảo Sát Hướng Nghiệp Động AI (Chuẩn Hóa)",
+  "questions": [
+    {
+      "category": "Interest",
+      "questionText": "Bạn thích làm việc trực tiếp với máy móc, sửa chữa thiết bị điện tử hoặc làm các công việc lắp ráp cơ khí thủ công.",
+      "options": [
+        {"text": "Hoàn toàn không thích", "weight": 1},
+        {"text": "Ít khi thích", "weight": 2},
+        {"text": "Bình thường / Tùy hoàn cảnh", "weight": 3},
+        {"text": "Khá thích", "weight": 4},
+        {"text": "Rất thích / Đam mê", "weight": 5}
+      ]
+    },
+    {
+      "category": "Interest",
+      "questionText": "Bạn thích nghiên cứu, tìm hiểu nguyên lý hoạt động của các hiện tượng tự nhiên hoặc giải các bài toán logic phức tạp.",
+      "options": [
+        {"text": "Hoàn toàn không thích", "weight": 1},
+        {"text": "Ít khi thích", "weight": 2},
+        {"text": "Bình thường / Tùy hoàn cảnh", "weight": 3},
+        {"text": "Khá thích", "weight": 4},
+        {"text": "Rất thích / Đam mê", "weight": 5}
+      ]
+    },
+    {
+      "category": "Interest",
+      "questionText": "Bạn đam mê sáng tạo nghệ thuật, thiết kế hình ảnh, sáng tác nhạc hoặc viết lách tự do.",
+      "options": [
+        {"text": "Hoàn toàn không thích", "weight": 1},
+        {"text": "Ít khi thích", "weight": 2},
+        {"text": "Bình thường / Tùy hoàn cảnh", "weight": 3},
+        {"text": "Khá thích", "weight": 4},
+        {"text": "Rất thích / Đam mê", "weight": 5}
+      ]
+    },
+    {
+      "category": "Interest",
+      "questionText": "Bạn thích trò chuyện, tư vấn tâm lý, dạy học hoặc tham gia các hoạt động giúp đỡ cộng đồng.",
+      "options": [
+        {"text": "Hoàn toàn không thích", "weight": 1},
+        {"text": "Ít khi thích", "weight": 2},
+        {"text": "Bình thường / Tùy hoàn cảnh", "weight": 3},
+        {"text": "Khá thích", "weight": 4},
+        {"text": "Rất thích / Đam mê", "weight": 5}
+      ]
+    },
+    {
+      "category": "Interest",
+      "questionText": "Bạn tự tin đứng ra thuyết phục người khác, lập kế hoạch kinh doanh hoặc dẫn dắt đội ngũ hoàn thành mục tiêu.",
+      "options": [
+        {"text": "Hoàn toàn không thích", "weight": 1},
+        {"text": "Ít khi thích", "weight": 2},
+        {"text": "Bình thường / Tùy hoàn cảnh", "weight": 3},
+        {"text": "Khá thích", "weight": 4},
+        {"text": "Rất thích / Đam mê", "weight": 5}
+      ]
+    },
+    {
+      "category": "Behavioral",
+      "questionText": "Bạn cảm thấy tràn đầy năng lượng khi giao tiếp với người lạ và thích là trung tâm của các buổi thảo luận sôi nổi.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Behavioral",
+      "questionText": "Bạn luôn hào hứng tìm tòi các ý tưởng mới, trải nghiệm văn hóa lạ và sẵn sàng thay đổi phương pháp làm việc sáng tạo hơn.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Behavioral",
+      "questionText": "Bạn luôn lập kế hoạch chi tiết trước khi hành động và hoàn thành công việc đúng thời hạn một cách tỉ mỉ.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Behavioral",
+      "questionText": "Bạn sẵn sàng nhường nhịn, lắng nghe ý kiến của người khác để giữ hòa khí và tích cực hỗ trợ đồng đội trong công việc.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Behavioral",
+      "questionText": "Bạn giữ được sự bình tĩnh, kiểm soát tốt cảm xúc cá nhân ngay cả khi gặp áp lực công việc lớn.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Efficacy",
+      "questionText": "Bạn tin tưởng vào khả năng tự học hỏi các kỹ năng mới và giải quyết các khó khăn trong chuyên môn công việc.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Efficacy",
+      "questionText": "Bạn tin rằng nỗ lực làm việc bền bỉ sẽ mang lại cho bạn sự thăng tiến và thành công xứng đáng.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Efficacy",
+      "questionText": "Bạn luôn đặt ra các mục tiêu nghề nghiệp rõ ràng cho bản thân và kiên trì thực hiện từng bước để đạt được chúng.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Efficacy",
+      "questionText": "Bạn cảm thấy tự tin phát triển bản thân khi nhận được sự động viên và chia sẻ kinh nghiệm từ những người xung quanh.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    },
+    {
+      "category": "Efficacy",
+      "questionText": "Bạn sẵn sàng đối mặt và tìm cách vượt qua các rào cản hoặc hoàn cảnh khó khăn để theo đuổi đam mê sự nghiệp.",
+      "options": [
+        {"text": "Hoàn toàn không đúng", "weight": 1},
+        {"text": "Không đúng lắm", "weight": 2},
+        {"text": "Bình thường / Khó nói", "weight": 3},
+        {"text": "Khá đúng", "weight": 4},
+        {"text": "Rất đúng với tôi", "weight": 5}
+      ]
+    }
+  ]
+}

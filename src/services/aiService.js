@@ -2,10 +2,10 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash", // Model nhanh hơn
+    model: "gemini-2.5-flash-lite", // Model nhanh hơn
     generationConfig: {
-        temperature: 0.7, // Giảm randomness để response nhanh hơn
-        maxOutputTokens: 2048, // Giới hạn output để nhanh hơn
+        temperature: 0.5, // Giảm randomness để response nhanh hơn
+        maxOutputTokens: 1024, // Giới hạn output để nhanh hơn
         // Bỏ responseMimeType JSON để tăng tốc
     }
 });
@@ -153,7 +153,7 @@ async function getCareerAdvice(info) {
     try {
         const query = info && info.question ? info.question : (typeof info === 'string' ? info : JSON.stringify(info));
         const context = (info && info.userContext) || {};
-        
+
         const contextStr = [
             context.educationLevel && `Học vấn: ${context.educationLevel}`,
             context.age && `Tuổi: ${context.age}`,

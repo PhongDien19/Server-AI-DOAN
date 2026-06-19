@@ -1,10 +1,12 @@
+const fs = require('fs');
+const path = require('path');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Question = require("../models/Question");
 const SurveyFeedback = require("../models/SurveyFeedback");
 const { setSessionContext, getSessionContext, setPendingEvaluation } = require("./sessionContextStore");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { temperature: 0.7 } });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.5 } });
 
 const generateSessionId = () => {
     return 'survey_' + Math.random().toString(36).substr(2, 9);
@@ -12,49 +14,10 @@ const generateSessionId = () => {
 
 const initSurvey = async (mode, targetCareer) => {
     try {
-        const prompt = `Bạn là chuyên gia tư vấn hướng nghiệp. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based).
-        
-Chế độ: ${mode === 'Discovery' ? 'Khám phá (dành cho người chưa biết mình muốn làm gì)' : 'Mục tiêu (đã có nghề mục tiêu là ' + targetCareer + ')'}.
+        const questionBankPath = path.join(__dirname, '../data/questionBank.json');
+        const questionBankRaw = fs.readFileSync(questionBankPath, 'utf8');
+        const surveyData = JSON.parse(questionBankRaw);
 
-Bắt buộc tuân thủ 3 quy tắc sau:
-1. Khai thác đa tầng: Sử dụng lý thuyết Holland, Big Five, và SCCT (Lý thuyết nhận thức xã hội nghề nghiệp). 
-   - 5 câu đánh giá mức độ yêu thích (Interest Fit - Holland)
-   - 5 câu đánh giá hành vi và phản ứng (Behavioral Fit - Big Five)
-   - 5 câu đánh giá năng lực tự nhận thức (Efficacy Fit - SCCT)
-2. Đối chiếu chéo: Các tình huống phải có sự liên kết, đối chiếu chéo với nhau để phát hiện sự mâu thuẫn trong câu trả lời nếu có.
-3. Thang đo Likert ngầm 5 mức độ: Câu trả lời phải tương ứng với thang đo từ 1 (Rất không đồng ý/Rất không phù hợp) đến 5 (Rất đồng ý/Rất phù hợp), nhưng không được hiển thị số 1-5 mà hiển thị dạng text tự nhiên (Ví dụ: "Hoàn toàn không phù hợp", "Có thể thử", "Hoàn toàn sẵn sàng").
-
-Yêu cầu trả về dạng JSON chuẩn xác:
-{
-  "testName": "Tên bài khảo sát",
-  "questions": [
-    {
-      "category": "Interest/Behavioral/Efficacy",
-      "questionText": "Tình huống ... Bạn sẽ làm gì?",
-      "options": [
-         {"text": "Phản ứng rất tiêu cực / né tránh", "weight": 1},
-         {"text": "Miễn cưỡng làm / không thích", "weight": 2},
-         {"text": "Bình thường / tùy hoàn cảnh", "weight": 3},
-         {"text": "Khá sẵn sàng / quan tâm", "weight": 4},
-         {"text": "Rất hào hứng / chủ động", "weight": 5}
-      ]
-    }
-    // ... 15 câu hỏi ...
-  ]
-}
-Chỉ trả về JSON, không kèm markdown hay text giải thích nào khác.`;
-
-        const result = await model.generateContent(prompt);
-        let text = result.response.text().trim();
-        
-        // Remove markdown formatting if any
-        if (text.startsWith('```json')) {
-            text = text.substring(7, text.length - 3).trim();
-        } else if (text.startsWith('```')) {
-            text = text.substring(3, text.length - 3).trim();
-        }
-        
-        const surveyData = JSON.parse(text);
         const sessionId = generateSessionId();
 
         // Lưu câu hỏi vào database tạm thời
@@ -74,7 +37,7 @@ Chỉ trả về JSON, không kèm markdown hay text giải thích nào khác.`;
 
         return { sessionId, survey: surveyData };
     } catch (error) {
-        console.error("Lỗi AI (Init Survey):", error);
+        console.error("Lỗi Init Survey:", error);
         throw error;
     }
 };
@@ -138,6 +101,10 @@ Tổng điểm đánh giá định lượng (1-5): ${totalScore.toFixed(2)}/5.
 Các câu hỏi và trả lời của người dùng (trọng số câu trả lời 1-5):
 ${JSON.stringify(parsedAnswers)}
 
+YÊU CẦU QUAN TRỌNG VỀ DANH SÁCH NGÀNH NGHỀ:
+- Trong mảng "compatibleCareers", thuộc tính "career" PHẢI LÀ tên của NGÀNH NGHỀ/LĨNH VỰC hoạt động (Ví dụ: "Công nghệ thông tin", "Marketing & Truyền thông", "Y tế & Chăm sóc sức khỏe", "Quản trị kinh doanh", "Kiến trúc & Xây dựng", "Tài chính - Ngân hàng", "Giáo dục & Đào tạo").
+- Tuyệt đối KHÔNG trả về CHỨC DANH công việc cụ thể hay VỊ TRÍ nhân sự (Ví dụ: KHÔNG được trả về "Project Manager", "Data Scientist", "Product Manager", "Software Engineer", "Giám đốc Marketing", "Tư vấn viên").
+
 Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON chính xác như sau:
 {
   "score": ${totalScore.toFixed(2)},
@@ -147,11 +114,11 @@ Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON ch
   "weaknesses": ["Điểm yếu hoặc hạn chế cần cải thiện 1", "Điểm yếu 2..."],
   "advice": "Lời khuyên định hướng sự nghiệp cốt lõi và hướng phát triển tiếp theo",
   "compatibleCareers": [
-    {"career": "Ngành nghề tối tương thích 1", "reason": "Giải thích tại sao ngành này cực kỳ phù hợp với họ dựa trên hành vi và sở thích"},
-    {"career": "Ngành nghề tối tương thích 2", "reason": "Giải thích lý do..."},
-    {"career": "Ngành nghề tối tương thích 3", "reason": "Giải thích lý do..."},
-    {"career": "Ngành nghề tối tương thích 4", "reason": "Giải thích lý do..."},
-    {"career": "Ngành nghề tối tương thích 5", "reason": "Giải thích lý do..."}
+    {"career": "Tên ngành nghề/lĩnh vực tương thích 1", "reason": "Giải thích tại sao ngành này cực kỳ phù hợp với họ dựa trên hành vi và sở thích"},
+    {"career": "Tên ngành nghề/lĩnh vực tương thích 2", "reason": "Giải thích lý do..."},
+    {"career": "Tên ngành nghề/lĩnh vực tương thích 3", "reason": "Giải thích lý do..."},
+    {"career": "Tên ngành nghề/lĩnh vực tương thích 4", "reason": "Giải thích lý do..."},
+    {"career": "Tên ngành nghề/lĩnh vực tương thích 5", "reason": "Giải thích lý do..."}
   ]
 }
 Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
