@@ -24,6 +24,7 @@ const checkLogin = async (username, password) => {
     }
 
             user.lastLoginAt = new Date();
+            user.tokenCount = 3; // Reset to 3 tokens on each successful login
             await user.save();
 
             const profile = await UserProfile.findOne({

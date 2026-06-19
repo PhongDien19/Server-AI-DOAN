@@ -2,12 +2,28 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// Import Models
+const UserProfile = require('./models/UserProfile');
+
 // Import Services
-const { getCareerAdvice, generateCareerTest, evaluateCareerTest, generateHollandTest, generatePersonalityTest, generateCognitiveTest, evaluateHollandTest, evaluatePersonalityTest, evaluateCognitiveTest } = require('./services/aiService');
+const { 
+  getCareerAdvice, 
+  generateCareerTest, 
+  evaluateCareerTest, 
+  generateHollandTest, 
+  generatePersonalityTest, 
+  generateCognitiveTest, 
+  evaluateHollandTest, 
+  evaluatePersonalityTest, 
+  evaluateCognitiveTest,
+  generateValuesTest,
+  evaluateValuesTest,
+  generateComprehensiveAssessment
+} = require('./services/aiService');
 // const { checkLogin, socialLogin, register } = require('./services/authService');
 const { checkLogin, register } = require('./services/authService');
 const { saveQuestions, getQuestions } = require('./services/testService');
-const { getSessionContext, setPendingEvaluation } = require('./services/sessionContextStore');
+const { getSessionContext, setPendingEvaluation, setSessionContext } = require('./services/sessionContextStore');
 const { claimAssessmentResult } = require('./services/assessmentService');
 const { getProfile, updateProfile, getHistory } = require('./services/profileService');
 
@@ -20,6 +36,11 @@ const sequelize = require('./config/database');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Helper to generate a unique session ID
+const generateSessionId = () => {
+  return 'values_' + Math.random().toString(36).substr(2, 9);
+};
 
 // Middleware
 app.use(cors());
@@ -135,28 +156,55 @@ app.get('/api/test/questions/:sessionId', async (req, res) => {
 app.post('/api/test/evaluate/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
 
-  const result = await getQuestions(sessionId);
-  if (!result.success || result.data.length === 0) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy dữ liệu bài test' });
-  }
-
-  const questions = result.data;
-
-  const isCompleted = questions.every(q => q.userAnswer !== null && q.userAnswer !== '');
-  if (!isCompleted) {
-    return res.status(400).json({ success: false, message: 'Người dùng chưa trả lời hết các câu hỏi' });
-  }
-
-  const testName = questions[0].testName || 'Bài test';
-
-  const plainQuestions = questions.map(q => ({
-    questionText: q.questionText,
-    userAnswer: q.userAnswer,
-  }));
-
   try {
+    const result = await getQuestions(sessionId);
+    if (!result.success || !result.data || result.data.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy dữ liệu bài test' });
+    }
+
+    const questions = result.data;
+
+    const isCompleted = questions.every(q => q.userAnswer !== null && q.userAnswer !== '');
+    if (!isCompleted) {
+      return res.status(400).json({ success: false, message: 'Người dùng chưa trả lời hết các câu hỏi' });
+    }
+
+    const testName = questions[0].testName || 'Bài test';
+    const testType = questions[0].testType || 'career';
     const ctx = getSessionContext(sessionId) || {};
-    const evaluation = await evaluateCareerTest(testName, plainQuestions, ctx);
+    let evaluation;
+
+    if (testType === 'holland') {
+      const plainQuestions = questions.map(q => ({
+        questionText: q.questionText,
+        userAnswer: q.userAnswer,
+        hollandType: q.hollandType,
+      }));
+      evaluation = await evaluateHollandTest(plainQuestions, ctx);
+    } else if (testType === 'personality') {
+      const plainQuestions = questions.map(q => ({
+        questionText: q.questionText,
+        userAnswer: q.userAnswer,
+        trait: q.trait,
+      }));
+      evaluation = await evaluatePersonalityTest(plainQuestions, ctx);
+    } else if (testType === 'cognitive') {
+      const userAnswers = req.body.userAnswers || questions.map(q => q.userAnswer);
+      evaluation = await evaluateCognitiveTest(questions, userAnswers, ctx);
+    } else if (testType === 'values') {
+      const plainQuestions = questions.map(q => ({
+        questionText: q.questionText,
+        userAnswer: parseInt(q.userAnswer, 10) || q.userAnswer || 3,
+        valueType: q.valueType,
+      }));
+      evaluation = await evaluateValuesTest(plainQuestions, ctx);
+    } else {
+      const plainQuestions = questions.map(q => ({
+        questionText: q.questionText,
+        userAnswer: q.userAnswer,
+      }));
+      evaluation = await evaluateCareerTest(testName, plainQuestions, ctx);
+    }
 
     if (evaluation.error) {
       return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: evaluation });
@@ -168,7 +216,7 @@ app.post('/api/test/evaluate/:sessionId', async (req, res) => {
       success: true,
       requiresLogin: true,
       sessionId,
-      message: 'Đăng nhập hoặc đăng ký, sau đó gọi POST /api/assessment/claim với sessionId và userId để xem điểm và lưu vào hồ sơ.',
+      message: `Đăng nhập hoặc đăng ký, sau đó gọi POST /api/assessment/claim với sessionId và userId để xem kết quả ${testType}.`,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -204,247 +252,28 @@ app.get('/api/history/:userId', async (req, res) => {
   res.status(result.success ? 200 : 500).json(result);
 });
 
-// 12. Endpoint tạo bài test Holland (sở thích nghề nghiệp)
-app.post('/api/test/holland', async (req, res) => {
+// 12. Endpoint gộp tạo câu hỏi trắc nghiệm (Holland, Personality, Cognitive, Values)
+app.post('/api/test/generate', async (req, res) => {
   try {
-    const test = await generateHollandTest(req.body);
+    const { testType } = req.body;
+    let test;
+    if (testType === 'holland') {
+      test = await generateHollandTest(req.body);
+    } else if (testType === 'personality') {
+      test = await generatePersonalityTest(req.body);
+    } else if (testType === 'cognitive') {
+      test = await generateCognitiveTest(req.body);
+    } else if (testType === 'values') {
+      test = await generateValuesTest(req.body);
+    } else {
+      return res.status(400).json({ success: false, message: 'testType không hợp lệ hoặc thiếu' });
+    }
     res.json({ success: true, test });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// 13. Endpoint tạo bài test tính cách (MBTI & Big 5)
-app.post('/api/test/personality', async (req, res) => {
-  try {
-    const test = await generatePersonalityTest(req.body);
-    res.json({ success: true, test });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 14. Endpoint tạo bài test năng lực nhận thức
-app.post('/api/test/cognitive', async (req, res) => {
-  try {
-    const test = await generateCognitiveTest(req.body);
-    res.json({ success: true, test });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 15. Endpoint đánh giá bài test Holland
-app.post('/api/test/evaluate-holland/:sessionId', async (req, res) => {
-  const { sessionId } = req.params;
-
-  const result = await getQuestions(sessionId);
-  if (!result.success || result.data.length === 0) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy dữ liệu bài test Holland' });
-  }
-
-  const questions = result.data;
-
-  const isCompleted = questions.every(q => q.userAnswer !== null && q.userAnswer !== '');
-  if (!isCompleted) {
-    return res.status(400).json({ success: false, message: 'Người dùng chưa trả lời hết các câu hỏi' });
-  }
-
-  const plainQuestions = questions.map(q => ({
-    questionText: q.questionText,
-    userAnswer: q.userAnswer,
-    hollandType: q.hollandType,
-  }));
-
-  try {
-    const ctx = getSessionContext(sessionId) || {};
-    const evaluation = await evaluateHollandTest(plainQuestions, ctx);
-
-    if (evaluation.error) {
-      return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: evaluation });
-    }
-
-    setPendingEvaluation(sessionId, evaluation, ctx);
-
-    res.json({
-      success: true,
-      requiresLogin: true,
-      sessionId,
-      message: 'Đăng nhập hoặc đăng ký, sau đó gọi POST /api/assessment/claim với sessionId và userId để xem kết quả Holland.',
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 16. Endpoint đánh giá bài test tính cách
-app.post('/api/test/evaluate-personality/:sessionId', async (req, res) => {
-  const { sessionId } = req.params;
-
-  const result = await getQuestions(sessionId);
-  if (!result.success || result.data.length === 0) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy dữ liệu bài test tính cách' });
-  }
-
-  const questions = result.data;
-
-  const isCompleted = questions.every(q => q.userAnswer !== null && q.userAnswer !== '');
-  if (!isCompleted) {
-    return res.status(400).json({ success: false, message: 'Người dùng chưa trả lời hết các câu hỏi' });
-  }
-
-  const plainQuestions = questions.map(q => ({
-    questionText: q.questionText,
-    userAnswer: q.userAnswer,
-    trait: q.trait,
-  }));
-
-  try {
-    const ctx = getSessionContext(sessionId) || {};
-    const evaluation = await evaluatePersonalityTest(plainQuestions, ctx);
-
-    if (evaluation.error) {
-      return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: evaluation });
-    }
-
-    setPendingEvaluation(sessionId, evaluation, ctx);
-
-    res.json({
-      success: true,
-      requiresLogin: true,
-      sessionId,
-      message: 'Đăng nhập hoặc đăng ký, sau đó gọi POST /api/assessment/claim với sessionId và userId để xem kết quả tính cách.',
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 17. Endpoint đánh giá bài test năng lực (cần cả câu trả lời đúng)
-app.post('/api/test/evaluate-cognitive/:sessionId', async (req, res) => {
-  const { sessionId } = req.params;
-  const { userAnswers } = req.body; // Mảng câu trả lời của user
-
-  const result = await getQuestions(sessionId);
-  if (!result.success || result.data.length === 0) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy dữ liệu bài test năng lực' });
-  }
-
-  const questions = result.data;
-
-  if (!userAnswers || userAnswers.length !== questions.length) {
-    return res.status(400).json({ success: false, message: 'Thiếu hoặc không đủ câu trả lời' });
-  }
-
-  try {
-    const ctx = getSessionContext(sessionId) || {};
-    const evaluation = await evaluateCognitiveTest(questions, userAnswers, ctx);
-
-    if (evaluation.error) {
-      return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: evaluation });
-    }
-
-    setPendingEvaluation(sessionId, evaluation, ctx);
-
-    res.json({
-      success: true,
-      requiresLogin: true,
-      sessionId,
-      message: 'Đăng nhập hoặc đăng ký, sau đó gọi POST /api/assessment/claim với sessionId và userId để xem kết quả năng lực.',
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// === VALUES ASSESSMENT ENDPOINTS ===
-
-// Tạo bài test hệ giá trị cá nhân
-app.post('/api/test/values', async (req, res) => {
-  try {
-    const { targetJob, age, educationLevel, hobby } = req.body;
-
-    if (!targetJob || !age || !educationLevel) {
-      return res.status(400).json({
-        success: false,
-        message: 'Thiếu thông tin: targetJob, age, educationLevel là bắt buộc'
-      });
-    }
-
-    const sessionId = generateSessionId();
-    const testData = await generateValuesTest({ targetJob, age, educationLevel, hobby });
-
-    if (testData.error) {
-      return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: testData });
-    }
-
-    // Lưu câu hỏi vào database
-    await saveQuestions(sessionId, testData.questions, 'values');
-
-    // Lưu context session
-    setSessionContext(sessionId, { targetJob, age, educationLevel, hobby, testType: 'values' });
-
-    res.json({
-      success: true,
-      sessionId,
-      testName: testData.testName,
-      valuesTypes: testData.valuesTypes,
-      options: testData.options,
-      questions: testData.questions.map((q, idx) => ({
-        id: idx + 1,
-        question: q.question,
-        valueType: q.valueType
-      }))
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Đánh giá bài test hệ giá trị cá nhân
-app.post('/api/test/evaluate-values/:sessionId', async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    const { answers } = req.body; // Array of answers (1-5 scale)
-
-    if (!answers || !Array.isArray(answers)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Thiếu answers array (mảng câu trả lời từ 1-5)'
-      });
-    }
-
-    const questions = await getQuestions(sessionId);
-    if (!questions || questions.length === 0) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy câu hỏi cho session này' });
-    }
-
-    // Kết hợp câu hỏi với câu trả lời
-    const questionsWithAnswers = questions.map((q, idx) => ({
-      questionText: q.questionText,
-      userAnswer: answers[idx] || 3, // Default to neutral
-      valueType: q.valueType
-    }));
-
-    const ctx = getSessionContext(sessionId) || {};
-    const evaluation = await evaluateValuesTest(questionsWithAnswers, ctx);
-
-    if (evaluation.error) {
-      return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: evaluation });
-    }
-
-    setPendingEvaluation(sessionId, evaluation, ctx);
-
-    res.json({
-      success: true,
-      requiresLogin: true,
-      sessionId,
-      message: 'Đăng nhập hoặc đăng ký, sau đó gọi POST /api/assessment/claim với sessionId và userId để xem kết quả hệ giá trị.',
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 // === COMPREHENSIVE ASSESSMENT ENDPOINT ===
 

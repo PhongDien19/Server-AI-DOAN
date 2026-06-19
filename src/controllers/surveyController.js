@@ -1,4 +1,5 @@
 const surveyService = require('../services/surveyService');
+const { claimAssessmentResult } = require('../services/assessmentService');
 
 const initSurvey = async (req, res) => {
     try {
@@ -21,12 +22,29 @@ const initSurvey = async (req, res) => {
 const submitSurvey = async (req, res) => {
     try {
         const { sessionId, answers } = req.body;
+        const userId = req.body.userId || req.headers['x-user-id'] || req.query.userId;
+
         // Validate
         if (!sessionId || !answers || !Array.isArray(answers)) {
             return res.status(400).json({ success: false, message: 'Thiếu thông tin sessionId hoặc answers' });
         }
 
         const result = await surveyService.processSurveySubmit(sessionId, answers);
+
+        // Tự động claim kết quả và cập nhật UserProfile nếu người dùng đã đăng nhập
+        if (userId && result.requiresLogin) {
+            const claimRes = await claimAssessmentResult(sessionId, userId);
+            if (claimRes.success) {
+                return res.status(200).json({
+                    success: true,
+                    requiresLogin: false,
+                    sessionId,
+                    evaluation: claimRes.evaluation,
+                    profile: claimRes.profile
+                });
+            }
+        }
+
         res.status(200).json({ success: true, ...result });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

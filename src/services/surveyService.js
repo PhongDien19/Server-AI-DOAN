@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Question = require("../models/Question");
 const SurveyFeedback = require("../models/SurveyFeedback");
+const { setSessionContext, getSessionContext, setPendingEvaluation } = require("./sessionContextStore");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { temperature: 0.7 } });
@@ -68,6 +69,9 @@ Chỉ trả về JSON, không kèm markdown hay text giải thích nào khác.`;
         
         await Question.bulkCreate(questionRecords);
 
+        // Lưu thông tin context vào sessionContextStore
+        setSessionContext(sessionId, { mode, targetCareer });
+
         return { sessionId, survey: surveyData };
     } catch (error) {
         console.error("Lỗi AI (Init Survey):", error);
@@ -94,13 +98,13 @@ const processSurveySubmit = async (sessionId, answers) => {
             const q = questions[i];
             const answerWeight = answers[i] || 3; // default neutral if missing
             
-            // update userAnswer into db
+            // update userAnswer vào DB
             q.userAnswer = String(answerWeight);
             await q.save();
             
             parsedAnswers.push({ question: q.questionText, weight: answerWeight });
 
-            // Phân loại (ở đây dùng logic đơn giản là chia đều 3 nhóm vì AI trả về 15 câu theo thứ tự)
+            // Phân loại 15 câu theo thứ tự (5 Holland, 5 Big Five, 5 SCCT)
             if (i < 5) {
                 interestScore += answerWeight;
                 interestMax += 5;
@@ -119,57 +123,57 @@ const processSurveySubmit = async (sessionId, answers) => {
 
         const totalScore = (normalizedInterest * 5 * 0.5) + (normalizedBehavioral * 5 * 0.3) + (normalizedEfficacy * 5 * 0.2);
 
-        // Chuẩn bị kết quả trả về dựa trên điểm số
-        if (totalScore > 3.0) {
-            // Quantitative data
-            return {
-                score: totalScore.toFixed(2),
-                status: 'Passed',
-                message: 'Bạn rất phù hợp với định hướng này!',
-                details: {
-                    interestScore: (normalizedInterest * 5).toFixed(2),
-                    behavioralScore: (normalizedBehavioral * 5).toFixed(2),
-                    efficacyScore: (normalizedEfficacy * 5).toFixed(2),
-                },
-                recommendations: {
-                    roadmap: ['Tìm hiểu sâu về chuyên ngành', 'Tham gia dự án thực tế', 'Tìm kiếm Mentor'],
-                    certificates: ['Chứng chỉ liên quan cấp độ 1', 'Chứng chỉ kỹ năng mềm'],
-                    onetMatches: ['Nghề nghiệp liên quan trên O*NET']
-                }
-            };
-        } else {
-            // Gọi Gemini để Deep Scan & Pivot Logic
-            const prompt = `Người dùng đã làm bài khảo sát nhưng đạt điểm thấp (${totalScore.toFixed(2)}/5). 
-            Các câu hỏi và lựa chọn (trọng số 1-5): ${JSON.stringify(parsedAnswers)}.
-            
-            Thực hiện "Deep Scan": Phản biện logic lý do tại sao người này không phù hợp với lựa chọn ban đầu.
-            Thực hiện "Pivot Logic": Gợi ý ít nhất 2 ngành thay thế tương đồng nhưng phù hợp hơn với phản ứng của họ.
-            
-            Trả về JSON:
-            {
-                "deepScanAnalysis": "Lý do không phù hợp dựa trên câu trả lời (vd: không thích áp lực, tránh giao tiếp, etc...)",
-                "pivotSuggestions": [
-                    {"career": "Ngành gợi ý 1", "reason": "Lý do phù hợp"},
-                    {"career": "Ngành gợi ý 2", "reason": "Lý do phù hợp"}
-                ]
-            }`;
+        // Đọc lại context từ sessionContextStore
+        const ctx = getSessionContext(sessionId) || {};
+        const mode = ctx.mode || 'Discovery';
+        const targetCareer = ctx.targetCareer || '';
 
-            const aiResult = await model.generateContent(prompt);
-            let text = aiResult.response.text().trim();
-            if (text.startsWith('```json')) {
-                text = text.substring(7, text.length - 3).trim();
-            } else if (text.startsWith('```')) {
-                text = text.substring(3, text.length - 3).trim();
-            }
-            const aiData = JSON.parse(text);
+        // Gọi Gemini để phân tích chi tiết và sinh kết quả động
+        const prompt = `Bạn là chuyên gia nhân sự và cố vấn hướng nghiệp AI. Hãy phân tích kết quả bài khảo sát của người dùng:
+Chế độ: ${mode} ${targetCareer ? '(Ngành mục tiêu: ' + targetCareer + ')' : ''}
+Tổng điểm tương thích định lượng (1-5): ${totalScore.toFixed(2)}/5 (Trong đó: Điểm > 3.0 là Phù hợp, Điểm <= 3.0 là Không phù hợp).
 
-            return {
-                score: totalScore.toFixed(2),
-                status: 'Failed',
-                message: 'Có thể bạn sẽ phù hợp hơn ở những hướng đi khác.',
-                aiAnalysis: aiData
-            };
+Các câu hỏi và trả lời của người dùng (trọng số câu trả lời 1-5):
+${JSON.stringify(parsedAnswers)}
+
+Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON chính xác như sau:
+{
+  "score": ${totalScore.toFixed(2)},
+  "status": "${totalScore > 3.0 ? 'Passed' : 'Failed'}",
+  "summary": "Tóm tắt phân tích kết quả tương thích tổng quan (khoảng 3-4 câu ngắn gọn)",
+  "strengths": ["Điểm mạnh phù hợp 1", "Điểm mạnh phù hợp 2"],
+  "weaknesses": ["Điểm yếu hoặc hạn chế cần cải thiện 1", "Điểm yếu 2..."],
+  "advice": "Lời khuyên định hướng sự nghiệp cốt lõi và hướng phát triển tiếp theo",
+  "roadmap": ["Lộ trình học tập/làm việc bước 1", "Bước 2...", "Bước 3..."],
+  "certificates": ["Chứng chỉ chuyên môn nên học 1", "Chứng chỉ 2..."],
+  "onetMatches": ["Vị trí công việc liên quan theo O*NET 1", "Vị trí 2..."],
+  "deepScanAnalysis": "${totalScore <= 3.0 ? 'Phân tích phản biện logic chi tiết tại sao các phản ứng của họ cho thấy ngành này không phù hợp' : ''}",
+  "pivotSuggestions": [
+    {"career": "Ngành thay thế gợi ý 1", "reason": "Lý do tại sao ngành này phù hợp hơn dựa trên hành vi của họ"},
+    {"career": "Ngành thay thế gợi ý 2", "reason": "Lý do..."}
+  ]
+}
+Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+
+        const aiResult = await model.generateContent(prompt);
+        let text = aiResult.response.text().trim();
+        if (text.startsWith('```json')) {
+            text = text.substring(7, text.length - 3).trim();
+        } else if (text.startsWith('```')) {
+            text = text.substring(3, text.length - 3).trim();
         }
+        
+        const evaluation = JSON.parse(text);
+
+        // Lưu kết quả vào trạng thái chờ (Pending)
+        setPendingEvaluation(sessionId, evaluation, ctx);
+
+        return {
+            requiresLogin: true,
+            sessionId,
+            evaluation,
+            message: 'Khảo sát đã hoàn thành và được AI chấm điểm. Vui lòng đăng nhập hoặc tạo tài khoản để nhận báo cáo hướng nghiệp chi tiết.'
+        };
     } catch (error) {
         console.error("Lỗi AI (Submit Survey):", error);
         throw error;

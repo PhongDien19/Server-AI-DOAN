@@ -7,8 +7,7 @@ const { checkAuth } = require('../middlewares/authMiddleware');
 router.post('/init', surveyController.initSurvey);
 
 // Chức năng 2: Xử lý chấm điểm và Chặn xem kết quả
-// Middleware checkAuth kiểm tra nếu chưa login trả về 401
-router.post('/submit', checkAuth, surveyController.submitSurvey);
+router.post('/submit', surveyController.submitSurvey);
 
 // Chức năng 4: Đánh giá mức độ hài lòng (Feedback Loop)
 router.post('/feedback', surveyController.feedbackSurvey);

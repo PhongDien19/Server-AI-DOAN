@@ -14,6 +14,7 @@ const askChatbot = async (userId, question) => {
         if (user.tokenCount <= 0) {
             return {
                 success: false,
+                tokenLimit: true,
                 message: 'Hết Token tư vấn. Vui lòng nâng cấp hoặc mua thêm token.'
             };
         }

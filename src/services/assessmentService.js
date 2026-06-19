@@ -84,6 +84,12 @@ async function claimAssessmentResult(sessionId, userId) {
           weaknesses: evaluation.weaknesses,
           advice: evaluation.advice,
           testName: testNameSaved || undefined,
+          roadmap: evaluation.roadmap,
+          certificates: evaluation.certificates,
+          onetMatches: evaluation.onetMatches,
+          deepScanAnalysis: evaluation.deepScanAnalysis,
+          pivotSuggestions: evaluation.pivotSuggestions,
+          status: evaluation.status
         };
         break;
 
