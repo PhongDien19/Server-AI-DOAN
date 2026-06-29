@@ -2,8 +2,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// Import Models
-const UserProfile = require('./models/UserProfile');
+const { NguoiDung: UserProfile } = require('./models');
 
 // Import Services
 const { 
@@ -351,13 +350,44 @@ app.get('/', (req, res) => {
   res.send('Server AI Tư vấn hướng nghiệp đang hoạt động!');
 });
 
-// Khởi động server (Không tự động tạo bảng)
+// Khởi động server (Tự động đồng bộ và tạo bảng nếu chưa có)
 app.listen(PORT, async () => {
   try {
     await sequelize.authenticate();
     console.log("Đã kết nối MySQL thành công!");
+
+    // Tự động đồng bộ cấu trúc database với MySQL
+    await sequelize.sync({ alter: true });
+    console.log("Đã đồng bộ hóa cơ sở dữ liệu MySQL thành công!");
+
+    // Khởi tạo tài khoản mặc định phongdien1905@gmail.com / 123456 trong MySQL
+    const { Taikhoan, NguoiDung } = require('./models');
+    const bcrypt = require('bcrypt');
+    const email = 'phongdien1905@gmail.com';
+    
+    const defaultUser = await Taikhoan.findOne({ where: { email } });
+    if (!defaultUser) {
+      const passwordHash = await bcrypt.hash('123456', 10);
+      const user = await Taikhoan.create({
+        email,
+        passwordHash,
+        authProvider: 'local',
+        isEmailVerified: true,
+        role: 'user',
+        tokenCount: 3
+      });
+      await NguoiDung.create({
+        userId: user.id,
+        email: email,
+        fullName: 'Phong Điền',
+        targetJob: 'Lập trình viên',
+        educationLevel: 'Đại học',
+        interests: 'Đọc sách, Công nghệ'
+      });
+      console.log("Đã khởi tạo tài khoản mặc định thành công trong MySQL: phongdien1905@gmail.com / 123456");
+    }
   } catch (error) {
-    console.error("Lỗi kết nối database:", error);
+    console.error("Lỗi kết nối hoặc đồng bộ database:", error);
   }
   console.log(`Server AI đang chạy tại cổng ${PORT}`);
 });

@@ -1,6 +1,5 @@
 const bcrypt = require('bcrypt');
-const UserAccount = require('../models/UserAccount');
-const UserProfile = require('../models/UserProfile'); // Thêm để tạo profile khi user mới đăng nhập
+const { Taikhoan: UserAccount, NguoiDung: UserProfile } = require('../models');
 
 /**
  * Hàm kiểm tra đăng nhập bằng Username / Password

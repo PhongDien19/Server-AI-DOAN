@@ -1,4 +1,4 @@
-const Question = require('../models/Question');
+const { CauHoi: Question } = require('../models');
 const { setSessionContext } = require('./sessionContextStore');
 
 /**

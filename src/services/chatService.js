@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const UserAccount = require("../models/UserAccount");
+const { Taikhoan: UserAccount, NguoiDung, Chatbox } = require("../models");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.7 } });
 
@@ -43,6 +43,24 @@ const askChatbot = async (userId, question) => {
         
         const result = await model.generateContent(prompt);
         const answer = result.response.text().trim();
+
+        // Lưu log tin nhắn vào bảng Chatbox
+        const profile = await NguoiDung.findOne({ where: { userId } });
+        if (profile) {
+            const chatSessionId = Math.floor(Date.now() / 1000); // Mã phiên chat tạm thời
+            await Chatbox.create({
+                MaND: profile.id,
+                MaChat: chatSessionId,
+                NguoiGui: 'user',
+                NoiDung: question
+            });
+            await Chatbox.create({
+                MaND: profile.id,
+                MaChat: chatSessionId,
+                NguoiGui: 'bot',
+                NoiDung: answer
+            });
+        }
 
         return {
             success: true,
