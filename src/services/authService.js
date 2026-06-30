@@ -12,25 +12,32 @@ const checkLogin = async (username, password) => {
       return { success: false, message: 'Tài khoản không tồn tại' };
     }
 
+    
     // Ngăn đăng nhập bằng pass nếu tài khoản tạo qua Google/Facebook mà chưa setup pass
-    if (user.authProvider !== 'local' && !user.passwordHash) {
-      return { success: false, message: `Tài khoản này được kết nối qua ${user.authProvider}. Vui lòng đăng nhập bằng ${user.authProvider}.` };
+    if (!user.passwordHash) {
+      return { success: false, message: 'Tài khoản không có mật khẩu, vui lòng liên hệ hỗ trợ' };
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       return { success: false, message: 'Mật khẩu không chính xác' };
     }
-
-            user.lastLoginAt = new Date();
-            user.tokenCount = 3; // Reset to 3 tokens on each successful login
-            await user.save();
+    if (user.isActive === false) {
+      return { success: false, message: 'Tài khoản hiện đang bị khóa' };
+    }
+            await UserAccount.update(
+              { 
+                tokenCount: 3,
+                lastLoginAt: new Date() 
+              },
+              { where: { id: user.id } }
+            );
 
             const profile = await UserProfile.findOne({
                 where: { userId: user.id },
                 attributes: [
                     'fullName',
-                    'targetJob',
+                    //'targetJob',
                     'educationLevel',
                     'careerFitScore',
                     'careerFitResult',
@@ -142,8 +149,8 @@ const register = async (email, password, fullName) => {
     const newUser = await UserAccount.create({
       email,
       passwordHash,
-      authProvider: 'local',
-      isEmailVerified: false,
+      // authProvider: 'local',
+      // isEmailVerified: false,
     });
 
     // 4. Tạo profile cho user
