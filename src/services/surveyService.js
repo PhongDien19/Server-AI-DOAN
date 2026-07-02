@@ -21,6 +21,18 @@ model.generateContent = async function (prompt, retries = 3, delayMs = 1500) {
     }
 };
 
+const isStudyingHighSchool = (education) => {
+    if (!education) return false;
+    const eduLower = String(education).toLowerCase().trim();
+    if (eduLower.includes("đại học") || eduLower.includes("đi làm") || eduLower.includes("cao đẳng") || eduLower.includes("tốt nghiệp")) {
+        return false;
+    }
+    return eduLower.includes("thpt") || 
+           eduLower.includes("học sinh") || 
+           eduLower.includes("cấp 3") || 
+           eduLower.includes("đang học");
+};
+
 const generateSessionId = () => {
     return 'survey_' + Math.random().toString(36).substr(2, 9);
 };
@@ -30,35 +42,37 @@ const initSurvey = async (mode, targetCareer, userContext = {}) => {
         const sessionId = generateSessionId();
         let surveyData;
 
-        // Chế độ Mục tiêu HOẶC Chế độ Khám phá -> Sinh câu hỏi qua Gemini hoàn toàn động dựa trên thông tin người dùng nhập từ front-end
+        const isHighSchool = isStudyingHighSchool(userContext.education);
         const formattedTestName = mode === 'Targeted' 
-            ? `Khảo sát nghề ${targetCareer}`
-            : `Khảo sát hướng nghiệp động AI`;
+            ? `Khảo sát nghề ${targetCareer} (${isHighSchool ? 'THPT' : 'Sinh viên/Người đi làm'})`
+            : `Khảo sát hướng nghiệp động AI (${isHighSchool ? 'THPT' : 'Sinh viên/Người đi làm'})`;
         
-        console.log(`[Survey] Bắt đầu gọi AI để tạo bộ câu hỏi. Mode: ${mode}, Career: ${targetCareer || 'N/A'}`);
+        console.log(`[Survey] Bắt đầu gọi AI để tạo bộ câu hỏi. Mode: ${mode}, Career: ${targetCareer || 'N/A'}, HighSchool: ${isHighSchool}`);
         
         let prompt = '';
         if (mode === 'Targeted') {
-            prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based) dành riêng cho người dùng đang muốn theo đuổi ngành nghề mục tiêu là "${targetCareer}", tích hợp thông tin cá nhân của người dùng dưới đây để tối ưu hóa tính chân thực và cá nhân hóa của câu hỏi:
+            if (isHighSchool) {
+                prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc dành cho học sinh trung học phổ thông. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based) phù hợp với độ tuổi học sinh THPT đang muốn hướng đến ngành nghề mục tiêu là "${targetCareer}". Tích hợp thông tin cá nhân dưới đây để cá nhân hóa câu hỏi:
 - Độ tuổi: ${userContext.age || 'Chưa rõ'}
-- Trình độ học văn: ${userContext.education || 'Chưa rõ'}
+- Trình độ học vấn: Đang học THPT (${userContext.education || 'Chưa rõ'})
 - Khu vực sinh sống: ${userContext.location || 'Chưa rõ'}
 - Sở thích cá nhân: ${userContext.hobby || 'Chưa rõ'}
-             
+
 Yêu cầu bắt buộc tuân thủ:
-1. Thiết kế đúng 15 câu hỏi dựa trên 3 trụ cột: John Holland (RIASEC), Big Five Personality Traits, và Social Cognitive Career Theory (SCCT).
-   - 5 câu đầu (từ câu 1-5): Đánh giá mức độ yêu thích với các hoạt động, công việc cụ thể của ngành "${targetCareer}" (Interest Fit - Holland). Các tình huống nên gắn liền với độ tuổi và sở thích thực tế của họ.
-   - 5 câu tiếp theo (từ câu 6-10): Đánh giá hành vi, phản ứng, tính cách phù hợp với áp lực, môi trường làm việc đặc thù của ngành "${targetCareer}" (Behavioral Fit - Big Five). Tình huống có thể xảy ra ngay tại khu vực sinh sống hoặc đặc thù vùng miền (${userContext.location || 'thực tế'}).
-   - 5 câu cuối (từ câu 11-15): Đánh giá năng lực tự nhận thức và niềm tin tự hiệu quả đối với các kỹ năng chuyên môn của ngành "${targetCareer}" (Efficacy Fit - SCCT). Câu hỏi cần cân nhắc trình độ học văn (${userContext.education || 'hiện tại'}) để đưa ra tình huống có độ khó phù hợp.
-2. Đối chiếu chéo: Các tình huống phải có sự liên kết, đối chiếu chéo với nhau để kiểm tra độ tin cậy và tính nhất quán của câu trả lời.
-3. Thang đo Likert 5 mức độ: Mỗi câu hỏi phải có đúng 5 lựa chọn tương ứng với điểm trọng số từ 1 (Thấp/Không đồng ý/Tránh né) đến 5 (Cao/Rất đồng ý/Chủ động). Câu trả lời hiển thị dạng text tự nhiên (Ví dụ: "Hoàn toàn không phù hợp", "Có thể thử", "Hoàn toàn sẵn sàng").
+1. Thiết kế đúng 15 câu hỏi trắc nghiệm tình huống phù hợp với học sinh cấp 3, tập trung vào môi trường học tập, hoạt động ngoại khóa, câu lạc bộ, dự án nhóm học đường, các tình huống giả định liên quan đến ngành "${targetCareer}" mà học sinh có thể tiếp cận hoặc tự học:
+   - 5 câu đầu (từ câu 1-5): Đánh giá mức độ yêu thích với các hoạt động, công việc học tập liên quan đến ngành "${targetCareer}" (Interest Fit - Holland). Các tình huống nên gắn liền với môi trường học tập THPT và sở thích thực tế của họ.
+   - 5 câu tiếp theo (từ câu 6-10): Đánh giá hành vi, phản ứng, tính cách khi học tập hoặc tham gia hoạt động nhóm học đường, khả năng chịu áp lực thi cử, kỹ năng giải quyết vấn đề phù hợp với ngành "${targetCareer}" (Behavioral Fit - Big Five).
+   - 5 câu cuối (từ câu 11-15): Đánh giá năng lực tự học, sự tự tin và niềm tin tự hiệu quả (Self-efficacy) đối với các kỹ năng nền tảng của ngành "${targetCareer}" (Efficacy Fit - SCCT). Các tình huống cần phù hợp với năng lực tự nghiên cứu và tư duy của học sinh THPT.
+2. Tuyệt đối không dùng các tình huống công sở chuyên nghiệp của người đã đi làm (như họp phòng ban, quản lý nhân sự, xử lý bất đồng với sếp, KPI công ty). Thay vào đó, hãy dùng các bối cảnh học tập, thi cử, câu lạc bộ trường học, tự học online, nghiên cứu khoa học kỹ thuật cấp trường.
+3. Đối chiếu chéo: Các tình huống phải có sự liên kết để kiểm tra độ tin cậy và tính nhất quán.
+4. Thang đo Likert 5 mức độ: Mỗi câu hỏi phải có đúng 5 lựa chọn tương ứng với điểm trọng số từ 1 (Thấp/Không đồng ý/Tránh né) đến 5 (Cao/Rất đồng ý/Chủ động). Câu trả lời hiển thị dạng text tự nhiên (Ví dụ: "Hoàn toàn không phù hợp", "Có thể thử", "Hoàn toàn sẵn sàng").
 
 Yêu cầu trả về định dạng JSON chuẩn xác như sau:
 {
-  "testName": "Khảo sát nghề ${targetCareer}",
+  "testName": "Khảo sát nghề ${targetCareer} (Dành cho học sinh THPT)",
   "questions": [
     {
-      "questionText": "Tình huống cụ thể liên quan đến ngành ${targetCareer}... Bạn sẽ làm gì?",
+      "questionText": "Tình huống học đường liên quan đến ngành ${targetCareer}... Bạn sẽ làm gì?",
       "options": [
          {"text": "Mô tả lựa chọn tương ứng mức 1", "weight": 1},
          {"text": "Mô tả lựa chọn tương ứng mức 2", "weight": 2},
@@ -70,27 +84,62 @@ Yêu cầu trả về định dạng JSON chuẩn xác như sau:
   ]
 }
 Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            } else {
+                prompt = `Bạn là chuyên gia tư vấn hướng nghiệp và nhân sự xuất sắc dành cho sinh viên và người đã đi làm. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based) phù hợp với sinh viên đại học hoặc người đi làm đang muốn chuyển nghề/đánh giá độ phù hợp với ngành mục tiêu là "${targetCareer}". Tích hợp thông tin cá nhân dưới đây để cá nhân hóa câu hỏi:
+- Độ tuổi: ${userContext.age || 'Chưa rõ'}
+- Trình độ học vấn: Sinh viên/Người đi làm (${userContext.education || 'Chưa rõ'})
+- Khu vực sinh sống: ${userContext.location || 'Chưa rõ'}
+- Sở thích cá nhân: ${userContext.hobby || 'Chưa rõ'}
+
+Yêu cầu bắt buộc tuân thủ:
+1. Thiết kế đúng 15 câu hỏi trắc nghiệm tình huống thực tế tại giảng đường đại học hoặc môi trường công sở chuyên nghiệp, liên quan trực tiếp đến công việc của ngành "${targetCareer}":
+   - 5 câu đầu (từ câu 1-5): Đánh giá mức độ yêu thích với các hoạt động nghiệp vụ chuyên sâu, các nhiệm vụ thực tế của ngành "${targetCareer}" (Interest Fit - Holland). Các tình huống nên gắn liền với môi trường công sở hoặc đồ án đại học.
+   - 5 câu tiếp theo (từ câu 6-10): Đánh giá hành vi, phản ứng, tính cách phù hợp với áp lực công việc, văn hóa doanh nghiệp, cách làm việc nhóm chuyên nghiệp, xử lý mâu thuẫn công sở trong ngành "${targetCareer}" (Behavioral Fit - Big Five).
+   - 5 câu cuối (từ câu 11-15): Đánh giá năng lực tự nhận thức, niềm tin tự hiệu quả đối với các kỹ năng chuyên môn chuyên sâu của ngành "${targetCareer}" (Efficacy Fit - SCCT). Câu hỏi cần cân nhắc trình độ và kinh nghiệm thực tế để đưa ra tình huống có độ khó phù hợp.
+2. Các tình huống câu hỏi cần tập trung vào các bối cảnh dự án, công việc chuyên môn, làm việc với khách hàng, quản lý thời gian, chịu áp lực tiến độ (deadline), KPI và giải quyết vấn đề kỹ thuật/nghiệp vụ thực tế.
+3. Đối chiếu chéo: Các tình huống phải có sự liên kết để kiểm tra độ tin cậy và tính nhất quán.
+4. Thang đo Likert 5 mức độ: Mỗi câu hỏi phải có đúng 5 lựa chọn tương ứng với điểm trọng số từ 1 (Thấp/Không đồng ý/Tránh né) đến 5 (Cao/Rất đồng ý/Chủ động). Câu trả lời hiển thị dạng text tự nhiên.
+
+Yêu cầu trả về định dạng JSON chuẩn xác như sau:
+{
+  "testName": "Khảo sát nghề ${targetCareer} (Dành cho sinh viên & người đi làm)",
+  "questions": [
+    {
+      "questionText": "Tình huống công việc liên quan đến ngành ${targetCareer}... Bạn sẽ làm gì?",
+      "options": [
+         {"text": "Mô tả lựa chọn tương ứng mức 1", "weight": 1},
+         {"text": "Mô tả lựa chọn tương ứng mức 2", "weight": 2},
+         {"text": "Mô tả lựa chọn tương ứng mức 3", "weight": 3},
+         {"text": "Mô tả lựa chọn tương ứng mức 4", "weight": 4},
+         {"text": "Mô tả lựa chọn tương ứng mức 5", "weight": 5}
+      ]
+    }
+  ]
+}
+Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            }
         } else {
-            prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based) nhằm khám phá ngành nghề phù hợp nhất cho người dùng dựa trên thông tin cá nhân của họ dưới đây:
+            if (isHighSchool) {
+                prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc dành cho học sinh trung học phổ thông. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based) nhằm khám phá ngành nghề phù hợp nhất cho học sinh THPT dựa trên thông tin cá nhân dưới đây:
 - Độ tuổi: ${userContext.age || 'Chưa rõ'}
-- Trình độ học văn: ${userContext.education || 'Chưa rõ'}
+- Trình độ học vấn: Đang học THPT (${userContext.education || 'Chưa rõ'})
 - Khu vực sinh sống: ${userContext.location || 'Chưa rõ'}
 - Sở thích cá nhân: ${userContext.hobby || 'Chưa rõ'}
 
 Yêu cầu bắt buộc tuân thủ:
-1. Thiết kế đúng 15 câu hỏi trắc nghiệm tình huống:
-   - 5 câu đầu (từ câu 1-5): Đánh giá mức độ yêu thích với các hoạt động, công việc cụ thể (Interest Fit - Holland). Các tình huống nên gắn liền với độ tuổi và sở thích thực tế của họ.
-   - 5 câu tiếp theo (từ câu 6-10): Đánh giá hành vi, phản ứng phù hợp với môi trường làm việc đặc thù (Behavioral Fit - Big Five). Tình huống có thể xảy ra ngay tại khu vực sinh sống hoặc đặc thù vùng miền (${userContext.location || 'thực tế'}).
-   - 5 câu cuối (từ câu 11-15): Đánh giá năng lực tự nhận thức và niềm tin tự hiệu quả đối với các nhóm kỹ năng (Efficacy Fit - SCCT). Câu hỏi cần cân nhắc trình độ học văn (${userContext.education || 'hiện tại'}) để đưa ra tình huống có độ khó phù hợp.
-2. Các tình huống câu hỏi cần gần gũi với thông tin cá nhân của người dùng để tối ưu độ chính xác và chất lượng câu hỏi, nhưng không được quá gượng ép. Các câu hỏi cần có tính thực tế và tính phân loại cao.
-3. Thang đo Likert 5 mức độ: Mỗi câu hỏi phải có đúng 5 lựa chọn tương ứng với điểm trọng số từ 1 (Thấp/Không đồng ý/Tránh né) đến 5 (Cao/Rất đồng ý/Chủ động). Câu trả lời hiển thị dạng text tự nhiên (Ví dụ: "Hoàn toàn không phù hợp", "Có thể thử", "Hoàn toàn sẵn sàng").
+1. Thiết kế đúng 15 câu hỏi trắc nghiệm tình huống phù hợp với học sinh cấp 3, xoay quanh môi trường học tập THPT, hoạt động ngoại khóa, việc lựa chọn môn học, cách xử lý bài tập, làm việc nhóm học đường:
+   - 5 câu đầu (từ câu 1-5): Đánh giá mức độ yêu thích với các nhóm hoạt động khác nhau theo thuyết Holland (RIASEC) (Interest Fit). Các tình huống nên gần gũi với sở thích và hoạt động học sinh cấp 3.
+   - 5 câu tiếp theo (từ câu 6-10): Đánh giá tính cách, phong cách học tập, làm việc nhóm, cách đối mặt với áp lực thi cử và giải quyết các vấn đề cá nhân/học tập (Behavioral Fit - Big Five).
+   - 5 câu cuối (từ câu 11-15): Đánh giá khả năng tự nhận thức năng lực học tập và sự tự tin đối với các nhóm kỹ năng cơ bản (như tư duy logic, viết lách, giao tiếp, tổ chức) (Efficacy Fit - SCCT).
+2. Tuyệt đối không sử dụng bối cảnh công sở chuyên nghiệp của người đi làm (như đi họp, quản lý nhân viên, tranh chấp với đồng nghiệp). Tập trung vào các bối cảnh học tập, thi đua, câu lạc bộ, các quyết định định hướng học tập cấp 3.
+3. Thang đo Likert 5 mức độ: Mỗi câu hỏi phải có đúng 5 lựa chọn tương ứng với điểm trọng số từ 1 (Thấp/Không đồng ý/Tránh né) đến 5 (Cao/Rất đồng ý/Chủ động). Câu trả lời hiển thị dạng text tự nhiên.
 
 Yêu cầu trả về định dạng JSON chuẩn xác như sau:
 {
-  "testName": "Khảo Sát Hướng Nghiệp Động AI (Cá Nhân Hóa)",
+  "testName": "Khảo Sát Hướng Nghiệp Động AI - Khám Phá (THPT)",
   "questions": [
     {
-      "questionText": "Tình huống câu hỏi cụ thể... Bạn sẽ làm gì?",
+      "questionText": "Tình huống học đường cụ thể... Bạn sẽ làm gì?",
       "options": [
          {"text": "Mô tả lựa chọn tương ứng mức 1", "weight": 1},
          {"text": "Mô tả lựa chọn tương ứng mức 2", "weight": 2},
@@ -102,6 +151,39 @@ Yêu cầu trả về định dạng JSON chuẩn xác như sau:
   ]
 }
 Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            } else {
+                prompt = `Bạn là chuyên gia tư vấn hướng nghiệp và nhân sự xuất sắc dành cho sinh viên và người đã đi làm. Hãy tạo một bộ khảo sát động (AI-driven) gồm đúng 15 câu hỏi trắc nghiệm tình huống (Scenario-based) nhằm khám phá ngành nghề phù hợp nhất dựa trên thông tin cá nhân dưới đây:
+- Độ tuổi: ${userContext.age || 'Chưa rõ'}
+- Trình độ học vấn: Sinh viên/Người đi làm (${userContext.education || 'Chưa rõ'})
+- Khu vực sinh sống: ${userContext.location || 'Chưa rõ'}
+- Sở thích cá nhân: ${userContext.hobby || 'Chưa rõ'}
+
+Yêu cầu bắt buộc tuân thủ:
+1. Thiết kế đúng 15 câu hỏi trắc nghiệm tình huống thực tế tại giảng đường đại học hoặc môi trường công sở chuyên nghiệp để đánh giá tố chất nghề nghiệp:
+   - 5 câu đầu (từ câu 1-5): Đánh giá mức độ yêu thích với các nhóm công việc nghiệp vụ khác nhau theo thuyết Holland (RIASEC) (Interest Fit). Các tình huống nên gắn với công việc thực tế, dự án nghiên cứu hoặc công tác xã hội.
+   - 5 câu tiếp theo (từ câu 6-10): Đánh giá tính cách, phản ứng phù hợp với môi trường làm việc đặc thù, văn hóa doanh nghiệp, tương tác với sếp/đồng nghiệp, chịu áp lực công việc (Behavioral Fit - Big Five).
+   - 5 câu cuối (từ câu 11-15): Đánh giá niềm tin tự hiệu quả đối với các nhóm kỹ năng chuyên môn và kỹ năng mềm tại nơi làm việc (Efficacy Fit - SCCT).
+2. Tình huống câu hỏi cần mang tính thực tế công sở, môi trường làm việc, xử lý vấn đề trong dự án, quản lý công việc và phát triển sự nghiệp của người lớn.
+3. Thang đo Likert 5 mức độ: Mỗi câu hỏi phải có đúng 5 lựa chọn tương ứng với điểm trọng số từ 1 (Thấp/Không đồng ý/Tránh né) đến 5 (Cao/Rất đồng ý/Chủ động). Câu trả lời hiển thị dạng text tự nhiên.
+
+Yêu cầu trả về định dạng JSON chuẩn xác như sau:
+{
+  "testName": "Khảo Sát Hướng Nghiệp Động AI - Khám Phá (Sinh viên & Người đi làm)",
+  "questions": [
+    {
+      "questionText": "Tình huống công sở/đại học cụ thể... Bạn sẽ làm gì?",
+      "options": [
+         {"text": "Mô tả lựa chọn tương ứng mức 1", "weight": 1},
+         {"text": "Mô tả lựa chọn tương ứng mức 2", "weight": 2},
+         {"text": "Mô tả lựa chọn tương ứng mức 3", "weight": 3},
+         {"text": "Mô tả lựa chọn tương ứng mức 4", "weight": 4},
+         {"text": "Mô tả lựa chọn tương ứng mức 5", "weight": 5}
+      ]
+    }
+  ]
+}
+Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            }
         }
 
         const aiResult = await model.generateContent(prompt);
@@ -189,31 +271,75 @@ const processSurveySubmit = async (sessionId, answers) => {
         const targetCareer = ctx.targetCareer || '';
         const userContext = ctx.userContext || {};
 
+        // Quyết định nhóm người dùng dựa trên thông tin trình độ học vấn
+        const isHighSchool = isStudyingHighSchool(userContext.education);
+
         // Gọi Gemini để phân tích chi tiết và sinh kết quả động
         let prompt = '';
         if (mode === 'Discovery') {
-            prompt = `Bạn là chuyên gia nhân sự và cố vấn hướng nghiệp AI. Hãy phân tích kết quả bài khảo sát của người dùng:
-Chế độ: Khám phá (Discovery) - Người dùng đang muốn tìm định hướng nghề nghiệp phù hợp nhất dựa trên hành vi, sở thích và thông tin cá nhân:
+            if (isHighSchool) {
+                prompt = `Bạn là chuyên gia nhân sự và cố vấn hướng nghiệp AI dành riêng cho học sinh trung học phổ thông (THPT). Hãy phân tích kết quả bài khảo sát của học sinh:
+Chế độ: Khám phá (Discovery) - Học sinh muốn tìm định hướng nghề nghiệp phù hợp nhất dựa trên hành vi, sở thích và thông tin cá nhân:
 - Độ tuổi: ${userContext.age || 'Chưa rõ'}
-- Trình độ học vấn: ${userContext.education || 'Chưa rõ'}
+- Trình độ học vấn: Đang học THPT (${userContext.education || 'Chưa rõ'})
 - Khu vực sinh sống: ${userContext.location || 'Chưa rõ'}
 - Sở thích cá nhân: ${userContext.hobby || 'Chưa rõ'}
 
-Tổng điểm đánh giá định lượng (1-5): ${totalScore.toFixed(2)}/5.
+Các câu hỏi và trả lời của học sinh (trọng số câu trả lời 1-5):
+${JSON.stringify(parsedAnswers)}
+
+YÊU CẦU QUAN TRỌNG VỀ ĐÁNH GIÁ VÀ HƯỚNG NGHIỆP:
+1. LƯU Ý: Không chấm điểm tương thích hay đánh giá Passed/Failed vì đây là bài khảo sát tự khám phá định hướng tổng quan cho học sinh THPT. Do đó, JSON trả về KHÔNG chứa các trường "score" và "status".
+2. Bỏ qua các phần liên quan đến mức lương thị trường, các công ty hay vị trí tuyển dụng thực tế của người đi làm trong các phần summary, advice.
+3. Trong mảng "compatibleCareers", thuộc tính "career" PHẢI LÀ tên của NGÀNH NGHỀ/LĨNH VỰC hoạt động (Ví dụ: "Công nghệ thông tin", "Marketing & Truyền thông", "Y tế & Chăm sóc sức khỏe", "Quản trị kinh doanh", "Kiến trúc & Xây dựng"). Đề xuất 5 ngành nghề phù hợp nhất.
+4. Đối với mỗi ngành nghề được đề xuất trong "compatibleCareers", hãy tìm kiếm và gợi ý các trường Đại học/Cao đẳng có đào tạo ngành đó tại Việt Nam (ưu tiên khu vực sinh sống hoặc các trường nổi tiếng quốc gia), bao gồm tên trường, điểm chuẩn 3 năm gần nhất, đường link chính thức của trường và đường link thông tin tuyển sinh của trường.
+
+Hãy thực hiện đánh giá định hướng và trả về cấu trúc JSON chính xác như sau:
+{
+  "summary": "Tóm tắt phân tích kết quả định hướng tổng quan về nhóm tính cách/sở thích của học sinh (khoảng 3-4 câu ngắn gọn, có cân nhắc đến độ tuổi, học vấn THPT và sở thích)",
+  "strengths": ["Điểm mạnh nổi bật 1", "Điểm mạnh nổi bật 2"],
+  "weaknesses": ["Hạn chế hoặc kỹ năng cần cải thiện 1", "Hạn chế 2..."],
+  "advice": "Lời khuyên định hướng học tập cốt lõi và hướng chuẩn bị tiếp theo cho học sinh cấp 3 để thi tuyển hoặc đăng ký xét tuyển",
+  "compatibleCareers": [
+    {
+      "career": "Tên ngành nghề/lĩnh vực phù hợp 1",
+      "reason": "Giải thích chi tiết tại sao ngành này phù hợp với học sinh dựa trên thông tin cá nhân và kết quả trả lời",
+      "trainingInstitutions": [
+        {
+          "schoolName": "Tên trường Đại học/Cao đẳng 1 (Ví dụ: Trường Đại học Bách khoa Hà Nội)",
+          "benchmarkScores": "Thang điểm chuẩn 3 năm gần nhất (Ví dụ: 2023: 26.5 điểm, 2024: 27.2 điểm, 2025: 27.5 điểm)",
+          "officialLink": "URL trang web chính thức của trường",
+          "admissionLink": "URL cổng tuyển sinh chính thức của trường"
+        },
+        {
+          "schoolName": "Tên trường Đại học/Cao đẳng 2...",
+          "benchmarkScores": "Thang điểm chuẩn 3 năm gần nhất...",
+          "officialLink": "URL trang web chính thức...",
+          "admissionLink": "URL tuyển sinh..."
+        }
+      ]
+    }
+  ]
+}
+Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            } else {
+                prompt = `Bạn là chuyên gia nhân sự và cố vấn hướng nghiệp AI dành cho sinh viên đại học và người đi làm. Hãy phân tích kết quả bài khảo sát của người dùng:
+Chế độ: Khám phá (Discovery) - Người dùng đang muốn tìm định hướng nghề nghiệp phù hợp nhất dựa trên hành vi, sở thích và thông tin cá nhân:
+- Độ tuổi: ${userContext.age || 'Chưa rõ'}
+- Trình độ học vấn: Sinh viên/Người đi làm (${userContext.education || 'Chưa rõ'})
+- Khu vực sinh sống: ${userContext.location || 'Chưa rõ'}
+- Sở thích cá nhân: ${userContext.hobby || 'Chưa rõ'}
 
 Các câu hỏi và trả lời của người dùng (trọng số câu trả lời 1-5):
 ${JSON.stringify(parsedAnswers)}
 
-YÊU CẦU QUAN TRỌNG VỀ DANH SÁCH NGÀNH NGHỀ:
-- Trong mảng "compatibleCareers", thuộc tính "career" PHẢI LÀ tên của NGÀNH NGHỀ/LĨNH VỰC hoạt động (Ví dụ: "Công nghệ thông tin", "Marketing & Truyền thông", "Y tế & Chăm sóc sức khỏe", "Quản trị kinh doanh", "Kiến trúc & Xây dựng", "Tài chính - Ngân hàng", "Giáo dục & Đào tạo").
-- Các ngành nghề được gợi ý và lý do giải thích cần cân nhắc kỹ độ tuổi, học vấn, sở thích của người dùng để đề xuất thực tế, phù hợp nhất.
-- Tuyệt đối KHÔNG trả về CHỨC DANH công việc cụ thể hay VỊ TRÍ nhân sự (Ví dụ: KHÔNG được trả về "Project Manager", "Data Scientist", "Product Manager", "Software Engineer", "Giám đốc Marketing", "Tư vấn viên").
+YÊU CẦU QUAN TRỌNG VỀ ĐÁNH GIÁ VÀ HƯỚNG NGHIỆP:
+1. LƯU Ý: Không chấm điểm tương thích hay đánh giá Passed/Failed vì đây là bài khảo sát tự khám phá định hướng tổng quan. Do đó, JSON trả về KHÔNG chứa các trường "score" và "status".
+2. Trong mảng "compatibleCareers", thuộc tính "career" PHẢI LÀ tên của NGÀNH NGHỀ/LĨNH VỰC hoạt động (Ví dụ: "Công nghệ thông tin", "Marketing & Truyền thông", "Y tế & Chăm sóc sức khỏe", "Quản trị kinh doanh", "Kiến trúc & Xây dựng"). Đề xuất 5 ngành nghề phù hợp nhất. Đưa ra lý do giải thích rõ ràng và có cân nhắc đến độ tuổi, học vấn, sở thích của họ.
 
 Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON chính xác như sau:
 {
-  "score": ${totalScore.toFixed(2)},
-  "status": "${totalScore > 3.0 ? 'Passed' : 'Failed'}",
-  "summary": "Tóm tắt phân tích kết quả tương thích tổng quan về nhóm tính cách/sở thích của họ (khoảng 3-4 câu ngắn gọn, có cân nhắc đến độ tuổi, học vấn và sở thích của họ)",
+  "summary": "Tóm tắt phân tích kết quả tổng quan về nhóm tính cách/sở thích của họ (khoảng 3-4 câu ngắn gọn, có cân nhắc đến độ tuổi, học vấn và sở thích của họ)",
   "strengths": ["Điểm mạnh phù hợp 1", "Điểm mạnh phù hợp 2"],
   "weaknesses": ["Điểm yếu hoặc hạn chế cần cải thiện 1", "Điểm yếu 2..."],
   "advice": "Lời khuyên định hướng sự nghiệp cốt lõi và hướng phát triển tiếp theo (cụ thể hóa dựa trên trình độ học vấn, độ tuổi và sở thích của họ)",
@@ -226,8 +352,74 @@ Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON ch
   ]
 }
 Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            }
         } else {
-            prompt = `Bạn là chuyên gia nhân sự và cố vấn hướng nghiệp AI. Hãy phân tích kết quả bài khảo sát của người dùng:
+            if (isHighSchool) {
+                prompt = `Bạn là chuyên gia nhân sự và cố vấn hướng nghiệp AI dành riêng cho học sinh trung học phổ thông (THPT). Hãy phân tích kết quả bài khảo sát của học sinh:
+Chế độ: Mục tiêu (Targeted) - Ngành nghề mục tiêu của học sinh: ${targetCareer}.
+Thông tin cá nhân học sinh:
+- Độ tuổi: ${userContext.age || 'Chưa rõ'}
+- Trình độ học vấn: Đang học THPT (${userContext.education || 'Chưa rõ'})
+- Khu vực sinh sống: ${userContext.location || 'Chưa rõ'}
+- Sở thích cá nhân: ${userContext.hobby || 'Chưa rõ'}
+
+Tổng điểm tương thích định lượng (1-5): ${totalScore.toFixed(2)}/5 (Trong đó: Điểm > 3.0 là Phù hợp, Điểm <= 3.0 là Chưa phù hợp).
+
+Các câu hỏi và trả lời của học sinh (trọng số câu trả lời 1-5):
+${JSON.stringify(parsedAnswers)}
+
+YÊU CẦU QUAN TRỌNG VỀ ĐÁNH GIÁ VÀ HƯỚNG NGHIỆP:
+1. Bỏ qua các phần thông tin liên quan đến mức lương thị trường, mức lương cơ bản hay các công ty tuyển dụng thực tế trong các phần summary, advice. JSON trả về KHÔNG chứa các trường "basicSalary" hay "laborMarket".
+2. Thay vào đó, hãy tìm kiếm và gợi ý tối thiểu 5 trường Đại học hoặc Cao đẳng có đào tạo ngành "${targetCareer}" tại Việt Nam (ưu tiên khu vực gần nơi sinh sống của học sinh hoặc các trường hàng đầu cả nước).
+3. Đối với mỗi trường trong danh sách 5 trường này, phải cung cấp đầy đủ thông tin: tên trường, thang điểm chuẩn của ngành "${targetCareer}" trong 3 năm gần nhất, đường link trang web chính thức của trường và đường link tuyển sinh chính thức của trường.
+
+Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON chính xác như sau:
+{
+  "score": ${totalScore.toFixed(2)},
+  "status": "${totalScore > 3.0 ? 'Passed' : 'Failed'}",
+  "summary": "Tóm tắt phân tích kết quả tương thích tổng quan của học sinh với ngành ${targetCareer} (khoảng 3-4 câu ngắn gọn, cân nhắc đến trình độ học vấn THPT và sở thích)",
+  "strengths": ["Điểm mạnh của học sinh phù hợp với ngành này 1", "Điểm mạnh phù hợp 2"],
+  "weaknesses": ["Hạn chế hoặc kiến thức học sinh cần cải thiện để chuẩn bị cho ngành này 1", "Hạn chế 2..."],
+  "advice": "Lời khuyên định hướng học tập cốt lõi và định hướng ôn tập tiếp theo đối với ngành ${targetCareer} dành cho học sinh THPT",
+  "roadmap": ["Lộ trình học tập bước 1 để thi đỗ và chuẩn bị cho ngành", "Bước 2...", "Bước 3..."],
+  "certificates": ["Chứng chỉ học tập, ngoại ngữ hoặc kỹ năng nên tích lũy sớm 1", "Chứng chỉ 2..."],
+  "onetMatches": ["Vị trí công việc tương lai liên quan theo O*NET 1", "Vị trí 2..."],
+  "trainingInstitutions": [
+    {
+      "schoolName": "Tên trường Đại học/Cao đẳng 1 (Ví dụ: Trường Đại học Bách khoa Hà Nội)",
+      "benchmarkScores": "Thang điểm chuẩn của ngành trong 3 năm gần nhất (Ví dụ: 2023: 26.5 điểm, 2024: 27.2 điểm, 2025: 27.5 điểm)",
+      "officialLink": "URL trang web chính thức của trường (Ví dụ: https://hust.edu.vn)",
+      "admissionLink": "URL cổng tuyển sinh chính thức của trường (Ví dụ: https://ts.hust.edu.vn)"
+    },
+    {
+      "schoolName": "Tên trường Đại học/Cao đẳng 2...",
+      "benchmarkScores": "Thang điểm chuẩn 3 năm gần nhất...",
+      "officialLink": "URL trang web chính thức...",
+      "admissionLink": "URL tuyển sinh..."
+    },
+    {
+      "schoolName": "Tên trường Đại học/Cao đẳng 3...",
+      "benchmarkScores": "Thang điểm chuẩn 3 năm gần nhất...",
+      "officialLink": "URL trang web chính thức...",
+      "admissionLink": "URL tuyển sinh..."
+    },
+    {
+      "schoolName": "Tên trường Đại học/Cao đẳng 4...",
+      "benchmarkScores": "Thang điểm chuẩn 3 năm gần nhất...",
+      "officialLink": "URL trang web chính thức...",
+      "admissionLink": "URL tuyển sinh..."
+    },
+    {
+      "schoolName": "Tên trường Đại học/Cao đẳng 5...",
+      "benchmarkScores": "Thang điểm chuẩn 3 năm gần nhất...",
+      "officialLink": "URL trang web chính thức...",
+      "admissionLink": "URL tuyển sinh..."
+    }
+  ]
+}
+Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            } else {
+                prompt = `Bạn là chuyên gia nhân sự và cố vấn hướng nghiệp AI dành cho sinh viên đại học và người đi làm. Hãy phân tích kết quả bài khảo sát của người dùng:
 Chế độ: Mục tiêu (Targeted) - Ngành nghề mục tiêu của người dùng: ${targetCareer}.
 Thông tin cá nhân người dùng:
 - Độ tuổi: ${userContext.age || 'Chưa rõ'}
@@ -252,9 +444,10 @@ Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON ch
   "certificates": ["Chứng chỉ chuyên môn nên học 1", "Chứng chỉ 2..."],
   "onetMatches": ["Vị trí công việc liên quan theo O*NET 1", "Vị trí 2..."],
   "basicSalary": "Mức lương cơ bản cho ngành ${targetCareer} tại Việt Nam (Ví dụ: Khởi điểm: ... VNĐ/tháng, 3-5 năm kinh nghiệm: ... VNĐ/tháng)",
-  "laborMarket": "Thông tin về thị trường lao động tại Việt Nam cho ngành ${targetCareer} (Nhu cầu tuyển dụng, xu hướng và cơ hội phát triển)"
+  "laborMarket": "Thông tin về thị trường lao động tại Việt Nam cho ngành ${targetCareer} (Nhu cầu tuyển dụng, các công ty tiêu biểu hoạt động trong ngành này, xu hướng và cơ hội phát triển)"
 }
 Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
+            }
         }
 
         const aiResult = await model.generateContent(prompt);

@@ -29,6 +29,7 @@ const { getProfile, updateProfile, getHistory } = require('./services/profileSer
 // Import Routes
 const surveyRoutes = require('./routes/surveyRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const searchRoutes = require('./routes/searchRoutes');
 
 // Import DB config
 const sequelize = require('./config/database');
@@ -48,6 +49,7 @@ app.use(express.json());
 // Mount Custom API Routes
 app.use('/api/survey', surveyRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/search', searchRoutes);
 
 // 1. Endpoint tư vấn nghề nghiệp tổng quát (POST)
 app.post('/api/consult', async (req, res) => {

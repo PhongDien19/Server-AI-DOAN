@@ -77,6 +77,10 @@ const Taikhoan = sequelize.define('Taikhoan', {
   isEmailVerified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  lastLoginAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
   }
 }, {
   tableName: 'Taikhoan',

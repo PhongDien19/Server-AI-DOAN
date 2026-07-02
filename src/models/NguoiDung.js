@@ -28,6 +28,11 @@ const NguoiDung = sequelize.define('NguoiDung', {
     allowNull: true,
     field: 'HocVan'
   },
+  targetJob: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'targetJob'
+  },
   studyStatus: {
     type: DataTypes.STRING(100),
     allowNull: true,

@@ -85,7 +85,7 @@ async function claimAssessmentResult(sessionId, userId) {
     // Cập nhật dữ liệu theo loại test
     switch (testType) {
       case 'career':
-        updateData.careerFitScore = evaluation.score;
+        updateData.careerFitScore = evaluation.score !== undefined ? evaluation.score : null;
         updateData.careerFitResult = {
           ...evaluation,
           testName: testNameSaved || undefined,
@@ -208,6 +208,18 @@ async function claimAssessmentResult(sessionId, userId) {
                             MaNghe: nghe.MaNghe,
                             MaKQ: firstKq.MaKQ
                         });
+
+                        // Lưu thông tin trường đào tạo của ngành này (nếu có) vào DuLieuThiTruong
+                        if (item.trainingInstitutions) {
+                            await DuLieuThiTruong.create({
+                                MaNghe: nghe.MaNghe,
+                                Loai: 'Trường đào tạo',
+                                TieuDe: `Trường đào tạo ngành ${careerName}`,
+                                GiaTri: JSON.stringify(item.trainingInstitutions),
+                                MetaData: item.trainingInstitutions,
+                                NgayCapNhat: new Date()
+                            });
+                        }
                     }
                 }
 
@@ -259,6 +271,16 @@ async function claimAssessmentResult(sessionId, userId) {
                             Loai: 'Thị trường',
                             TieuDe: 'Nhu cầu nhân lực',
                             GiaTri: evaluation.laborMarket,
+                            NgayCapNhat: new Date()
+                        });
+                    }
+                    if (evaluation.trainingInstitutions) {
+                        await DuLieuThiTruong.create({
+                            MaNghe: nghe.MaNghe,
+                            Loai: 'Trường đào tạo',
+                            TieuDe: 'Danh sách trường đào tạo và điểm chuẩn',
+                            GiaTri: JSON.stringify(evaluation.trainingInstitutions),
+                            MetaData: evaluation.trainingInstitutions,
                             NgayCapNhat: new Date()
                         });
                     }
