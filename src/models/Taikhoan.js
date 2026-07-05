@@ -83,7 +83,7 @@ const Taikhoan = sequelize.define('Taikhoan', {
     allowNull: true,
   }
 }, {
-  tableName: 'Taikhoan',
+  tableName: 'taikhoan',
   timestamps: false,
 });
 

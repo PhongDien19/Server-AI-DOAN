@@ -34,7 +34,7 @@ const Prompt = sequelize.define('Prompt', {
     defaultValue: 1,
   }
 }, {
-  tableName: 'Prompt',
+  tableName: 'prompt',
   timestamps: true, // Diagram has createdAt and updatedAt
 });
 

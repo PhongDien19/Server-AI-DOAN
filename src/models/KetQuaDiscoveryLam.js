@@ -1,40 +1,40 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const DuLieuThiTruong = sequelize.define('DuLieuThiTruong', {
-  MaDL: {
+const KetQuaDiscoveryLam = sequelize.define('KetQuaDiscoveryLam', {
+  id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
     primaryKey: true,
   },
-  MaNghe: {
+  userId: {
     type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'userId',
+  },
+  careerName: {
+    type: DataTypes.STRING(255),
     allowNull: false,
   },
-  Loai: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
-  },
-  TieuDe: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-  },
-  GiaTri: {
+  jobDescription: {
     type: DataTypes.TEXT,
     allowNull: true,
   },
-  MetaData: {
-    type: DataTypes.JSON,
+  roles: {
+    type: DataTypes.TEXT,
     allowNull: true,
   },
-  NgayCapNhat: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW,
+  outlook: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  requiredSkills: {
+    type: DataTypes.TEXT,
+    allowNull: true,
   }
 }, {
-  tableName: 'DuLieuThiTruong',
+  tableName: 'discovery_lam',
   timestamps: false,
 });
 
-module.exports = DuLieuThiTruong;
+module.exports = KetQuaDiscoveryLam;

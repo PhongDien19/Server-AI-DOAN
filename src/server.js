@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-const { NguoiDung: UserProfile } = require('./models');
+const { NguoiDung: UserProfile, CauHoi: Question } = require('./models');
 
 // Import Services
 const { 
@@ -30,6 +30,7 @@ const { getProfile, updateProfile, getHistory } = require('./services/profileSer
 const surveyRoutes = require('./routes/surveyRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const searchRoutes = require('./routes/searchRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Import DB config
 const sequelize = require('./config/database');
@@ -50,6 +51,7 @@ app.use(express.json());
 app.use('/api/survey', surveyRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 1. Endpoint tư vấn nghề nghiệp tổng quát (POST)
 app.post('/api/consult', async (req, res) => {
@@ -256,7 +258,7 @@ app.get('/api/history/:userId', async (req, res) => {
 // 12. Endpoint gộp tạo câu hỏi trắc nghiệm (Holland, Personality, Cognitive, Values)
 app.post('/api/test/generate', async (req, res) => {
   try {
-    const { testType } = req.body;
+    const { testType, targetJob, hobby, age, educationLevel } = req.body;
     let test;
     if (testType === 'holland') {
       test = await generateHollandTest(req.body);
@@ -269,7 +271,48 @@ app.post('/api/test/generate', async (req, res) => {
     } else {
       return res.status(400).json({ success: false, message: 'testType không hợp lệ hoặc thiếu' });
     }
-    res.json({ success: true, test });
+
+    if (test && !test.error) {
+      // Tự sinh sessionId duy nhất để đồng bộ với Frontend
+      const sessionId = testType + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+
+      // Lưu trữ session context
+      setSessionContext(sessionId, { targetJob, hobby, age, educationLevel });
+
+      // Lưu sẵn bộ câu hỏi vào bảng CauHoi (Question) kèm đầy đủ metadata
+      if (Array.isArray(test.questions)) {
+        const questionRecords = test.questions.map((q, index) => {
+          const record = {
+            sessionId,
+            testName: test.testName || 'Bài test hướng nghiệp',
+            testType: testType,
+            questionText: q.question || q.questionText || '',
+            options: q.options || test.options || null,
+            userAnswer: null,
+            order: index + 1
+          };
+
+          if (testType === 'holland' && q.hollandType) {
+            record.hollandType = q.hollandType;
+          } else if (testType === 'personality' && q.trait) {
+            record.trait = q.trait;
+          } else if (testType === 'cognitive') {
+            record.questionType = q.type;
+            record.correctAnswer = q.correctAnswer;
+          } else if (testType === 'values' && q.valueType) {
+            record.valueType = q.valueType;
+          }
+
+          return record;
+        });
+
+        await Question.bulkCreate(questionRecords);
+      }
+
+      res.json({ success: true, sessionId, test });
+    } else {
+      res.status(502).json({ success: false, message: 'Không thể tạo bài test bằng AI', details: test });
+    }
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -324,19 +367,7 @@ app.post('/api/assessment/comprehensive/:userId', async (req, res) => {
       return res.status(502).json({ success: false, message: 'AI không trả về kết quả hợp lệ', details: comprehensive });
     }
 
-    // Cập nhật profile với kết quả tổng hợp
-    await userProfile.update({
-      overallCompatibility: comprehensive.overallCompatibility,
-      compatibilityZone: comprehensive.compatibilityZone,
-      pillarScores: comprehensive.pillarScores,
-      comprehensiveSummary: comprehensive.comprehensiveSummary,
-      strengths: comprehensive.strengths,
-      weaknesses: comprehensive.weaknesses,
-      recommendedCareers: comprehensive.recommendedCareers,
-      skillDevelopment: comprehensive.skillDevelopment,
-      workEnvironment: comprehensive.workEnvironment,
-      careerAdvice: comprehensive.careerAdvice
-    });
+    // Không cập nhật profile vì các cột này đã được loại bỏ khỏi bảng nguoidung ở DB mới
 
     res.json({
       success: true,

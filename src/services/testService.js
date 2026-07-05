@@ -21,15 +21,35 @@ const saveQuestions = async (sessionId, userId, testName, questions, userContext
     // Xác định loại test
     const testType = determineTestTypeFromQuestions(testName, questions);
 
-    for (const q of questions) {
-      if (q.id) {
-        // Nếu câu hỏi đã có ID trong CSDL -> cập nhật câu trả lời
+    // Kiểm tra xem đã có câu hỏi nào của sessionId này trong DB chưa
+    const existingCount = await Question.count({ where: { sessionId: currentSessionId } });
+
+    if (existingCount > 0) {
+      for (const q of questions) {
+        const updateFields = { userAnswer: q.userAnswer || null };
+        if (userId) {
+          updateFields.userId = userId;
+        }
         await Question.update(
-          { userAnswer: q.userAnswer },
-          { where: { id: q.id, sessionId: currentSessionId } }
+          updateFields,
+          {
+            where: {
+              sessionId: currentSessionId,
+              order: q.order || 0
+            }
+          }
         );
-      } else {
-        // Nếu là lần đầu tạo câu hỏi -> lưu mới vào DB
+      }
+    } else {
+      for (const q of questions) {
+        if (q.id) {
+          // Nếu câu hỏi đã có ID trong CSDL -> cập nhật câu trả lời
+          await Question.update(
+            { userAnswer: q.userAnswer },
+            { where: { id: q.id, sessionId: currentSessionId } }
+          );
+        } else {
+          // Nếu là lần đầu tạo câu hỏi -> lưu mới vào DB
         const questionData = {
           sessionId: currentSessionId,
           userId: userId || null,
@@ -62,6 +82,7 @@ const saveQuestions = async (sessionId, userId, testName, questions, userContext
         await Question.create(questionData);
       }
     }
+  }
 
     return {
       success: true,

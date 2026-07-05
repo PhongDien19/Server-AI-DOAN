@@ -6,18 +6,27 @@ const CauHoi = require('./CauHoi');
 const KetQua = require('./KetQua');
 const Chatbox = require('./Chatbox');
 const Prompt = require('./Prompt');
-const DanhMucNganh = require('./DanhMucNganh');
-const NgheNghiep = require('./NgheNghiep');
-const GoiYNgheNghiep = require('./GoiYNgheNghiep');
-const LoTrinhNgheNghiep = require('./LoTrinhNgheNghiep');
-const DuLieuThiTruong = require('./DuLieuThiTruong');
-const SurveyFeedback = require('./SurveyFeedback'); // Keep existing model for api support
+const SurveyFeedback = require('./SurveyFeedback');
+const KetQuaDiscoveryHoc = require('./KetQuaDiscoveryHoc');
+const KetQuaDiscoveryLam = require('./KetQuaDiscoveryLam');
+const KetQuaTargetHoc = require('./KetQuaTargetHoc');
+const KetQuaTargetLam = require('./KetQuaTargetLam');
+const DiemHocSinh = require('./DiemHocSinh');
+const DiemNguoiLam = require('./DiemNguoiLam');
 
 // Define Associations
 
 // Taikhoan <-> NguoiDung (1-1)
 Taikhoan.hasOne(NguoiDung, { foreignKey: 'userId', as: 'Profile' });
 NguoiDung.belongsTo(Taikhoan, { foreignKey: 'userId', as: 'Account' });
+
+// NguoiDung <-> DiemHocSinh (1-1)
+NguoiDung.hasOne(DiemHocSinh, { foreignKey: 'MaND', as: 'StudentScores' });
+DiemHocSinh.belongsTo(NguoiDung, { foreignKey: 'MaND', as: 'Profile' });
+
+// NguoiDung <-> DiemNguoiLam (1-1)
+NguoiDung.hasOne(DiemNguoiLam, { foreignKey: 'MaND', as: 'WorkerScores' });
+DiemNguoiLam.belongsTo(NguoiDung, { foreignKey: 'MaND', as: 'Profile' });
 
 // NguoiDung <-> Chatbox (1-n)
 NguoiDung.hasMany(Chatbox, { foreignKey: 'MaND', as: 'Messages' });
@@ -31,29 +40,21 @@ KetQua.belongsTo(NguoiDung, { foreignKey: 'MaND', as: 'User' });
 CauHoi.hasMany(KetQua, { foreignKey: 'MaCH', as: 'Results' });
 KetQua.belongsTo(CauHoi, { foreignKey: 'MaCH', as: 'Question' });
 
-// DanhMucNganh <-> NgheNghiep (1-n)
-DanhMucNganh.hasMany(NgheNghiep, { foreignKey: 'MaDM', as: 'Careers' });
-NgheNghiep.belongsTo(DanhMucNganh, { foreignKey: 'MaDM', as: 'Category' });
+// Taikhoan <-> KetQuaDiscoveryHoc (1-n)
+Taikhoan.hasMany(KetQuaDiscoveryHoc, { foreignKey: 'userId', as: 'DiscoveryHocResults' });
+KetQuaDiscoveryHoc.belongsTo(Taikhoan, { foreignKey: 'userId', as: 'Account' });
 
-// NgheNghiep <-> GoiYNgheNghiep (1-n)
-NgheNghiep.hasMany(GoiYNgheNghiep, { foreignKey: 'MaNghe', as: 'Recommendations' });
-GoiYNgheNghiep.belongsTo(NgheNghiep, { foreignKey: 'MaNghe', as: 'Career' });
+// Taikhoan <-> KetQuaDiscoveryLam (1-n)
+Taikhoan.hasMany(KetQuaDiscoveryLam, { foreignKey: 'userId', as: 'DiscoveryLamResults' });
+KetQuaDiscoveryLam.belongsTo(Taikhoan, { foreignKey: 'userId', as: 'Account' });
 
-// NgheNghiep <-> LoTrinhNgheNghiep (1-n)
-NgheNghiep.hasMany(LoTrinhNgheNghiep, { foreignKey: 'MaNganh', as: 'Roadmaps' });
-LoTrinhNgheNghiep.belongsTo(NgheNghiep, { foreignKey: 'MaNganh', as: 'Career' });
+// Taikhoan <-> KetQuaTargetHoc (1-n)
+Taikhoan.hasMany(KetQuaTargetHoc, { foreignKey: 'userId', as: 'TargetHocResults' });
+KetQuaTargetHoc.belongsTo(Taikhoan, { foreignKey: 'userId', as: 'Account' });
 
-// NgheNghiep <-> DuLieuThiTruong (1-n)
-NgheNghiep.hasMany(DuLieuThiTruong, { foreignKey: 'MaNghe', as: 'MarketData' });
-DuLieuThiTruong.belongsTo(NgheNghiep, { foreignKey: 'MaNghe', as: 'Career' });
-
-// KetQua <-> GoiYNgheNghiep (1-n)
-KetQua.hasMany(GoiYNgheNghiep, { foreignKey: 'MaKQ', as: 'Recommendations' });
-GoiYNgheNghiep.belongsTo(KetQua, { foreignKey: 'MaKQ', as: 'Result' });
-
-// KetQua <-> LoTrinhNgheNghiep (1-n)
-KetQua.hasMany(LoTrinhNgheNghiep, { foreignKey: 'MaKQ', as: 'Roadmaps' });
-LoTrinhNgheNghiep.belongsTo(KetQua, { foreignKey: 'MaKQ', as: 'Result' });
+// Taikhoan <-> KetQuaTargetLam (1-n)
+Taikhoan.hasMany(KetQuaTargetLam, { foreignKey: 'userId', as: 'TargetLamResults' });
+KetQuaTargetLam.belongsTo(Taikhoan, { foreignKey: 'userId', as: 'Account' });
 
 module.exports = {
   sequelize,
@@ -63,10 +64,11 @@ module.exports = {
   KetQua,
   Chatbox,
   Prompt,
-  DanhMucNganh,
-  NgheNghiep,
-  GoiYNgheNghiep,
-  LoTrinhNgheNghiep,
-  DuLieuThiTruong,
   SurveyFeedback,
+  KetQuaDiscoveryHoc,
+  KetQuaDiscoveryLam,
+  KetQuaTargetHoc,
+  KetQuaTargetLam,
+  DiemHocSinh,
+  DiemNguoiLam,
 };

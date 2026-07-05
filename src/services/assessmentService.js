@@ -3,11 +3,10 @@ const {
   NguoiDung: UserProfile,
   CauHoi: Question,
   KetQua,
-  NgheNghiep,
-  DanhMucNganh,
-  GoiYNgheNghiep,
-  LoTrinhNgheNghiep,
-  DuLieuThiTruong
+  KetQuaDiscoveryHoc,
+  KetQuaDiscoveryLam,
+  KetQuaTargetHoc,
+  KetQuaTargetLam
 } = require("../models");
 const {
   getSessionContext,
@@ -15,6 +14,18 @@ const {
   peekPendingEvaluation,
   consumePendingEvaluation,
 } = require("./sessionContextStore");
+
+const isStudyingHighSchool = (education) => {
+  if (!education) return false;
+  const eduLower = String(education).toLowerCase().trim();
+  if (eduLower.includes("đại học") || eduLower.includes("đi làm") || eduLower.includes("cao đẳng") || eduLower.includes("tốt nghiệp")) {
+    return false;
+  }
+  return eduLower.includes("thpt") ||
+    eduLower.includes("học sinh") ||
+    eduLower.includes("cấp 3") ||
+    eduLower.includes("đang học");
+};
 
 /**
  * Gắn kết quả chấm điểm đang chờ với user đã đăng nhập, cập nhật profile và gán userId cho câu hỏi.
@@ -35,8 +46,58 @@ async function claimAssessmentResult(sessionId, userId) {
     return { success: false, message: "Tài khoản không tồn tại" };
   }
 
+  const profile = await UserProfile.findOne({ where: { userId: uid } });
+  if (!profile) {
+    return { success: false, message: "Không tìm thấy UserProfile" };
+  }
+
   const pending = peekPendingEvaluation(sessionId);
   if (!pending || !pending.evaluation) {
+    // Check if questions are already claimed/saved for this user and session
+    const existingQ = await Question.findOne({ where: { sessionId, userId: uid } });
+    if (existingQ) {
+      const testType = existingQ.testType;
+      let evalResult = null;
+      const isHighSchool = isStudyingHighSchool(profile.educationLevel);
+      if (testType === 'career') {
+        const isTarget = testNameSaved && testNameSaved.toLowerCase().includes('mục tiêu');
+        if (isTarget) {
+          if (isHighSchool) {
+            const schools = await KetQuaTargetHoc.findAll({ where: { userId: uid } });
+            evalResult = { trainingInstitutions: schools };
+          } else {
+            const companies = await KetQuaTargetLam.findAll({ where: { userId: uid } });
+            const first = companies[0] || {};
+            evalResult = { companies, laborMarket: first.laborMarket };
+          }
+        } else {
+          if (isHighSchool) {
+            const schools = await KetQuaDiscoveryHoc.findAll({ where: { userId: uid } });
+            evalResult = { compatibleCareers: schools };
+          } else {
+            const careers = await KetQuaDiscoveryLam.findAll({ where: { userId: uid } });
+            evalResult = { compatibleCareers: careers };
+          }
+        }
+      } else {
+        evalResult = {};
+      }
+
+      const profileJson = {
+        fullName: profile.fullName,
+        educationLevel: profile.educationLevel,
+        interests: profile.interests,
+        hobby: profile.interests
+      };
+
+      return {
+        success: true,
+        message: "Bài test này đã được đồng bộ với tài khoản của bạn.",
+        evaluation: evalResult,
+        profile: profileJson,
+      };
+    }
+
     return {
       success: false,
       message: "Không có kết quả chờ cho phiên này hoặc đã hết hạn. Vui lòng làm lại bài đánh giá.",
@@ -60,10 +121,7 @@ async function claimAssessmentResult(sessionId, userId) {
   });
   const testNameSaved = firstQ ? firstQ.testName : null;
 
-  const profile = await UserProfile.findOne({ where: { userId: uid } });
-  if (!profile) {
-    return { success: false, message: "Không tìm thấy UserProfile" };
-  }
+  // Profile already loaded above
 
   const interests =
     ctx.hobby != null && String(ctx.hobby).trim() !== ""
@@ -76,72 +134,18 @@ async function claimAssessmentResult(sessionId, userId) {
   try {
     const updateData = {
       fullName: (ctx.fullName && String(ctx.fullName).trim()) || profile.fullName,
-      targetJob: (ctx.targetJob && String(ctx.targetJob).trim()) || profile.targetJob,
       educationLevel:
         (ctx.educationLevel && String(ctx.educationLevel).trim()) || profile.educationLevel,
       interests,
     };
 
-    // Cập nhật dữ liệu theo loại test
+    // Cập nhật dữ liệu theo loại test (Không cập nhật thêm trường nào vào profile nữa vì CSDL đã được lược giản)
     switch (testType) {
       case 'career':
-        updateData.careerFitScore = evaluation.score !== undefined ? evaluation.score : null;
-        updateData.careerFitResult = {
-          ...evaluation,
-          testName: testNameSaved || undefined,
-        };
-        break;
-
       case 'holland':
-        updateData.hollandScores = evaluation.hollandScores;
-        updateData.hollandResult = {
-          topTypes: evaluation.topTypes,
-          summary: evaluation.summary,
-          careerSuggestions: evaluation.careerSuggestions,
-          advice: evaluation.advice,
-          testName: testNameSaved || undefined,
-        };
-        break;
-
       case 'personality':
-        updateData.personalityScores = evaluation.big5Scores;
-        updateData.personalityResult = {
-          suggestedMBTI: evaluation.suggestedMBTI,
-          personalitySummary: evaluation.personalitySummary,
-          strengths: evaluation.strengths,
-          careerFit: evaluation.careerFit,
-          developmentAdvice: evaluation.developmentAdvice,
-          testName: testNameSaved || undefined,
-        };
-        updateData.mbtiType = evaluation.suggestedMBTI;
-        break;
-
       case 'cognitive':
-        updateData.cognitiveScores = evaluation.cognitiveScores;
-        updateData.cognitiveResult = {
-          overallScore: evaluation.overallScore,
-          correctPercentage: evaluation.correctPercentage,
-          strengths: evaluation.strengths,
-          weaknesses: evaluation.weaknesses,
-          careerImplications: evaluation.careerImplications,
-          improvementSuggestions: evaluation.improvementSuggestions,
-          testName: testNameSaved || undefined,
-        };
-        updateData.cognitiveOverallScore = evaluation.overallScore;
-        updateData.cognitiveCorrectPercentage = evaluation.correctPercentage;
-        break;
-
       case 'values':
-        updateData.valuesScores = evaluation.valuesScores;
-        updateData.valuesResult = {
-          topValues: evaluation.topValues,
-          valuesSummary: evaluation.valuesSummary,
-          workEnvironment: evaluation.workEnvironment,
-          advice: evaluation.advice,
-          testName: testNameSaved || undefined,
-        };
-        updateData.topValues = evaluation.topValues;
-        updateData.valuesSummary = evaluation.valuesSummary;
         break;
     }
 
@@ -149,168 +153,107 @@ async function claimAssessmentResult(sessionId, userId) {
 
     await Question.update({ userId: uid }, { where: { sessionId } });
 
-    // --- LƯU THÔNG TIN CHI TIẾT VÀO CÁC BẢNG QUAN HỆ (CSDL 11 BẢNG) ---
+    // --- LƯU THÔNG TIN CHI TIẾT VÀO CÁC BẢNG KẾT QUẢ ---
     try {
-        const allSessionQuestions = await Question.findAll({ where: { sessionId } });
-        
-        // A. Lưu từng câu hỏi và câu trả lời đã trả lời vào bảng KetQua
-        const ketQuaRecords = [];
-        for (const q of allSessionQuestions) {
-            let score = 5.0; // Điểm mặc định
-            const ansVal = parseFloat(q.userAnswer);
-            if (!isNaN(ansVal)) {
-                score = ansVal;
-            }
+      const allSessionQuestions = await Question.findAll({ where: { sessionId } });
 
-            const kq = await KetQua.create({
-                MaCH: q.id,
-                CauTL: q.userAnswer || 'Chưa trả lời',
-                SoDiem: score,
-                MaND: profile.id,
-                NgayLamBai: new Date()
-            });
-            ketQuaRecords.push(kq);
+      // A. Lưu từng câu hỏi và câu trả lời đã trả lời vào bảng KetQua (Nhật ký câu trả lời)
+      for (const q of allSessionQuestions) {
+        let score = 5.0; // Điểm mặc định
+        const ansVal = parseFloat(q.userAnswer);
+        if (!isNaN(ansVal)) {
+          score = ansVal;
         }
 
-        const firstKq = ketQuaRecords[0];
+        await KetQua.create({
+          MaCH: q.id,
+          CauTL: q.userAnswer || 'Chưa trả lời',
+          SoDiem: score,
+          MaND: profile.id,
+          NgayLamBai: new Date()
+        });
+      }
 
-        if (firstKq) {
-            // Tạo mặc định danh mục ngành nghề Công nghệ thông tin
-            let dm = await DanhMucNganh.findOne({ where: { TenDM: 'Công nghệ thông tin' } });
-            if (!dm) {
-                dm = await DanhMucNganh.create({
-                    TenDM: 'Công nghệ thông tin',
-                    MoTa: 'Lĩnh vực Công nghệ thông tin và Truyền thông',
-                    TrangThai: 1
-                });
-            }
+      // B. Lưu toàn bộ kết quả phân tích AI chi tiết vào các bảng kết quả tinh gọn mới
+      if (testType === 'career') {
+        const mode = ctx.mode || 'Discovery';
+        const isHighSchool = isStudyingHighSchool(ctx.userContext?.education || profile.educationLevel);
 
-            if (testType === 'career') {
-                // Chế độ Discovery: có compatibleCareers
-                if (evaluation.compatibleCareers && Array.isArray(evaluation.compatibleCareers)) {
-                    for (const item of evaluation.compatibleCareers) {
-                        const careerName = item.career;
-                        
-                        let nghe = await NgheNghiep.findOne({ where: { TenNghe: careerName } });
-                        if (!nghe) {
-                            nghe = await NgheNghiep.create({
-                                MaDM: dm.MaDM,
-                                TenNghe: careerName,
-                                Slug: careerName.toLowerCase().replace(/ /g, '-').replace(/[^a-z0-9-]/g, ''),
-                                MoTa: item.reason || `Mô tả ngành ${careerName}`,
-                                KyNangCT: 'Kỹ năng chuyên môn cốt lõi',
-                                TrangThai: 1
-                            });
-                        }
-
-                        // Lưu gợi ý ngành nghề
-                        await GoiYNgheNghiep.create({
-                            MaNghe: nghe.MaNghe,
-                            MaKQ: firstKq.MaKQ
-                        });
-
-                        // Lưu thông tin trường đào tạo của ngành này (nếu có) vào DuLieuThiTruong
-                        if (item.trainingInstitutions) {
-                            await DuLieuThiTruong.create({
-                                MaNghe: nghe.MaNghe,
-                                Loai: 'Trường đào tạo',
-                                TieuDe: `Trường đào tạo ngành ${careerName}`,
-                                GiaTri: JSON.stringify(item.trainingInstitutions),
-                                MetaData: item.trainingInstitutions,
-                                NgayCapNhat: new Date()
-                            });
-                        }
-                    }
-                }
-
-                // Chế độ Target hoặc Discovery có roadmap
-                if (evaluation.roadmap && Array.isArray(evaluation.roadmap)) {
-                    const targetJob = ctx.targetJob || profile.targetJob || 'Lập trình viên';
-                    
-                    let nghe = await NgheNghiep.findOne({ where: { TenNghe: targetJob } });
-                    if (!nghe) {
-                        nghe = await NgheNghiep.create({
-                            MaDM: dm.MaDM,
-                            TenNghe: targetJob,
-                            Slug: targetJob.toLowerCase().replace(/ /g, '-').replace(/[^a-z0-9-]/g, ''),
-                            MoTa: `Định hướng nghề nghiệp mục tiêu: ${targetJob}`,
-                            KyNangCT: 'Các kỹ năng nghiệp vụ chính',
-                            TrangThai: 1
-                        });
-                    }
-
-                    // Lưu gợi ý nghề mục tiêu
-                    await GoiYNgheNghiep.create({
-                        MaNghe: nghe.MaNghe,
-                        MaKQ: firstKq.MaKQ
+        if (mode === 'Discovery') {
+          if (isHighSchool) {
+            if (evaluation.compatibleCareers && Array.isArray(evaluation.compatibleCareers)) {
+              for (const career of evaluation.compatibleCareers) {
+                const careerName = career.careerName || career.career || '';
+                if (career.trainingInstitutions && Array.isArray(career.trainingInstitutions)) {
+                  for (const school of career.trainingInstitutions) {
+                    await KetQuaDiscoveryHoc.create({
+                      userId: uid,
+                      careerName: careerName,
+                      schoolName: school.schoolName || '',
+                      benchmark2024: school.benchmark2024 || null,
+                      benchmark2023: school.benchmark2023 || null,
+                      benchmark2022: school.benchmark2022 || null,
+                      officialLink: school.officialLink || null,
+                      admissionLink: school.admissionLink || null
                     });
-
-                    // Lưu lộ trình chi tiết từng giai đoạn
-                    for (let idx = 0; idx < evaluation.roadmap.length; idx++) {
-                        await LoTrinhNgheNghiep.create({
-                            MaNganh: nghe.MaNghe,
-                            MaKQ: firstKq.MaKQ,
-                            TieuDe: `Giai đoạn ${idx + 1}`,
-                            MoTa: evaluation.roadmap[idx]
-                        });
-                    }
-
-                    // Lưu dữ liệu thị trường (Mức lương & Thông tin thị trường lao động)
-                    if (evaluation.basicSalary) {
-                        await DuLieuThiTruong.create({
-                            MaNghe: nghe.MaNghe,
-                            Loai: 'Lương',
-                            TieuDe: 'Mức lương trung bình',
-                            GiaTri: evaluation.basicSalary,
-                            NgayCapNhat: new Date()
-                        });
-                    }
-                    if (evaluation.laborMarket) {
-                        await DuLieuThiTruong.create({
-                            MaNghe: nghe.MaNghe,
-                            Loai: 'Thị trường',
-                            TieuDe: 'Nhu cầu nhân lực',
-                            GiaTri: evaluation.laborMarket,
-                            NgayCapNhat: new Date()
-                        });
-                    }
-                    if (evaluation.trainingInstitutions) {
-                        await DuLieuThiTruong.create({
-                            MaNghe: nghe.MaNghe,
-                            Loai: 'Trường đào tạo',
-                            TieuDe: 'Danh sách trường đào tạo và điểm chuẩn',
-                            GiaTri: JSON.stringify(evaluation.trainingInstitutions),
-                            MetaData: evaluation.trainingInstitutions,
-                            NgayCapNhat: new Date()
-                        });
-                    }
+                  }
                 }
-            } else if (testType === 'holland') {
-                if (evaluation.careerSuggestions && Array.isArray(evaluation.careerSuggestions)) {
-                    for (const careerName of evaluation.careerSuggestions) {
-                        let nghe = await NgheNghiep.findOne({ where: { TenNghe: careerName } });
-                        if (!nghe) {
-                            nghe = await NgheNghiep.create({
-                                MaDM: dm.MaDM,
-                                TenNghe: careerName,
-                                Slug: careerName.toLowerCase().replace(/ /g, '-').replace(/[^a-z0-9-]/g, ''),
-                                MoTa: `Gợi ý nghề từ trắc nghiệm RIASEC`,
-                                KyNangCT: 'Kỹ năng RIASEC liên quan',
-                                TrangThai: 1
-                            });
-                        }
-
-                        await GoiYNgheNghiep.create({
-                            MaNghe: nghe.MaNghe,
-                            MaKQ: firstKq.MaKQ
-                        });
-                    }
-                }
+              }
             }
+          } else {
+            if (evaluation.compatibleCareers && Array.isArray(evaluation.compatibleCareers)) {
+              for (const career of evaluation.compatibleCareers) {
+                let requiredSkillsStr = career.requiredSkills || '';
+                if (Array.isArray(requiredSkillsStr)) {
+                  requiredSkillsStr = requiredSkillsStr.join(', ');
+                }
+                await KetQuaDiscoveryLam.create({
+                  userId: uid,
+                  careerName: career.careerName || career.career || '',
+                  jobDescription: career.jobDescription || null,
+                  roles: career.roles || null,
+                  outlook: career.outlook || null,
+                  requiredSkills: requiredSkillsStr || null
+                });
+              }
+            }
+          }
+        } else if (mode === 'Targeted') {
+          if (isHighSchool) {
+            if (evaluation.trainingInstitutions && Array.isArray(evaluation.trainingInstitutions)) {
+              for (const school of evaluation.trainingInstitutions) {
+                await KetQuaTargetHoc.create({
+                  userId: uid,
+                  careerName: targetCareer,
+                  schoolName: school.schoolName || '',
+                  benchmark2024: school.benchmark2024 || null,
+                  benchmark2023: school.benchmark2023 || null,
+                  benchmark2022: school.benchmark2022 || null,
+                  officialLink: school.officialLink || null,
+                  admissionLink: school.admissionLink || null
+                });
+              }
+            }
+          } else {
+            if (evaluation.companies && Array.isArray(evaluation.companies)) {
+              for (const comp of evaluation.companies) {
+                await KetQuaTargetLam.create({
+                  userId: uid,
+                  careerName: targetCareer,
+                  companyName: comp.companyName || '',
+                  companyDescription: comp.companyDescription || null,
+                  careerLink: comp.careerLink || null,
+                  basicSalary: comp.basicSalary || null,
+                  laborMarket: comp.laborMarket || null
+                });
+              }
+            }
+          }
         }
+      }
     } catch (dbErr) {
-        console.error("Lỗi khi lưu dữ liệu quan hệ vào CSDL:", dbErr);
-        // Không chặn luồng chính để đảm bảo hồ sơ cơ bản vẫn được lưu
+      console.error("Lỗi khi lưu dữ liệu kết quả vào CSDL:", dbErr);
+      // Không chặn luồng chính để đảm bảo hồ sơ cơ bản vẫn được lưu
     }
 
     consumePendingEvaluation(sessionId);
@@ -322,11 +265,14 @@ async function claimAssessmentResult(sessionId, userId) {
     return { success: false, message: "Lỗi khi lưu kết quả vào CSDL" };
   }
 
+  const profileJson = profile.toJSON();
+  profileJson.hobby = profile.interests;
+
   return {
     success: true,
     message: "Đã lưu điểm và kết quả đánh giá vào hồ sơ",
     evaluation,
-    profile: profile.toJSON(),
+    profile: profileJson,
   };
 }
 

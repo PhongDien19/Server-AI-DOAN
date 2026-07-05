@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { Taikhoan: UserAccount, NguoiDung, Chatbox } = require("../models");
+const { Taikhoan: UserAccount, NguoiDung, Chatbox, KetQuaDiscoveryHoc, KetQuaDiscoveryLam, KetQuaTargetHoc, KetQuaTargetLam } = require("../models");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.7 } });
 
@@ -56,26 +56,36 @@ const askChatbot = async (userId, question) => {
                 }
             }
 
-            if (profile.careerFitResult) {
-                try {
-                    const cfr = typeof profile.careerFitResult === 'string'
-                        ? JSON.parse(profile.careerFitResult)
-                        : profile.careerFitResult;
-                    userContextInfo += `- Kết quả khảo sát nghề nghiệp mới nhất:\n`;
-                    if (cfr.summary) userContextInfo += `  + Tóm tắt: ${cfr.summary}\n`;
-                    if (cfr.strengths && Array.isArray(cfr.strengths)) {
-                        userContextInfo += `  + Điểm mạnh: ${cfr.strengths.join(', ')}\n`;
-                    }
-                    if (cfr.compatibleCareers && Array.isArray(cfr.compatibleCareers)) {
-                        const careersStr = cfr.compatibleCareers.map(c => c.career || c).join(', ');
-                        userContextInfo += `  + Các ngành nghề tương thích gợi ý: ${careersStr}\n`;
-                    }
-                    if (cfr.trainingInstitutions && Array.isArray(cfr.trainingInstitutions)) {
-                        const insts = cfr.trainingInstitutions.map(inst => inst.schoolName || inst).join(', ');
-                        userContextInfo += `  + Các trường đào tạo đề xuất: ${insts}\n`;
-                    }
-                } catch (e) {
-                    // Tránh crash nếu JSON hỏng
+            const [discHoc, discLam, targetHoc, targetLam] = await Promise.all([
+                KetQuaDiscoveryHoc.findAll({ where: { userId } }),
+                KetQuaDiscoveryLam.findAll({ where: { userId } }),
+                KetQuaTargetHoc.findAll({ where: { userId } }),
+                KetQuaTargetLam.findAll({ where: { userId } }),
+            ]);
+
+            if (discHoc.length > 0 || discLam.length > 0 || targetHoc.length > 0 || targetLam.length > 0) {
+                userContextInfo += `- Kết quả khảo sát nghề nghiệp mới nhất:\n`;
+                if (discHoc.length > 0) {
+                    const careers = discHoc.map(c => c.careerName).filter((v, i, a) => a.indexOf(v) === i);
+                    const schools = discHoc.map(s => s.schoolName).filter((v, i, a) => a.indexOf(v) === i);
+                    userContextInfo += `  + Các ngành học phù hợp gợi ý: ${careers.join(', ')}\n`;
+                    userContextInfo += `  + Các trường đề xuất: ${schools.join(', ')}\n`;
+                }
+                if (discLam.length > 0) {
+                    const careers = discLam.map(c => c.careerName).filter((v, i, a) => a.indexOf(v) === i);
+                    userContextInfo += `  + Các ngành nghề gợi ý: ${careers.join(', ')}\n`;
+                }
+                if (targetHoc.length > 0) {
+                    const career = targetHoc[0].careerName;
+                    const schools = targetHoc.map(s => s.schoolName);
+                    userContextInfo += `  + Ngành học mục tiêu: ${career}\n`;
+                    userContextInfo += `  + Các trường đào tạo thuộc khu vực mong muốn: ${schools.join(', ')}\n`;
+                }
+                if (targetLam.length > 0) {
+                    const career = targetLam[0].careerName;
+                    const companies = targetLam.map(c => c.companyName);
+                    userContextInfo += `  + Ngành nghề mục tiêu: ${career}\n`;
+                    userContextInfo += `  + Các công ty tiêu biểu theo khu vực mong muốn: ${companies.join(', ')}\n`;
                 }
             }
 

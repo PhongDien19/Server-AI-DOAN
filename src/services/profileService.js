@@ -1,4 +1,13 @@
-const { NguoiDung: UserProfile, CauHoi: Question } = require('../models');
+const {
+  NguoiDung: UserProfile,
+  CauHoi: Question,
+  DiemHocSinh,
+  DiemNguoiLam,
+  KetQuaDiscoveryHoc,
+  KetQuaDiscoveryLam,
+  KetQuaTargetHoc,
+  KetQuaTargetLam
+} = require('../models');
 
 /**
  * Lấy thông tin hồ sơ người dùng
@@ -6,22 +15,24 @@ const { NguoiDung: UserProfile, CauHoi: Question } = require('../models');
  */
 const getProfile = async (userId) => {
     try {
-        const profile = await UserProfile.findOne({ where: { userId } });
+        const profile = await UserProfile.findOne({
+            where: { userId },
+            include: ['StudentScores', 'WorkerScores']
+        });
         if (!profile) {
             return { success: false, message: 'Không tìm thấy hồ sơ người dùng' };
         }
-        return { success: true, profile };
+        const profileJson = profile.toJSON();
+        profileJson.hobby = profile.interests;
+        profileJson.studentScores = profile.StudentScores || null;
+        profileJson.workerScores = profile.WorkerScores || null;
+        return { success: true, profile: profileJson };
     } catch (error) {
         console.error("Lỗi getProfile:", error);
         return { success: false, message: "Lỗi hệ thống khi lấy hồ sơ" };
     }
 };
 
-/**
- * Cập nhật thông tin hồ sơ
- * @param {number} userId 
- * @param {object} data - Dữ liệu cần cập nhật (từ req.body)
- */
 const updateProfile = async (userId, data) => {
     try {
         const profile = await UserProfile.findOne({ where: { userId } });
@@ -29,16 +40,45 @@ const updateProfile = async (userId, data) => {
             return { success: false, message: 'Không tìm thấy hồ sơ người dùng' };
         }
 
-        // Chỉ cho phép cập nhật các trường này
-        const allowedFields = ['fullName', 'avatarUrl', 'dateOfBirth', 'bio', 'interests', 'targetJob', 'educationLevel', 'phone'];
+        // Chỉ cho phép cập nhật các trường này của hồ sơ cơ bản
+        const allowedFields = ['fullName', 'age', 'educationLevel', 'studyStatus', 'location', 'interests'];
         for (const field of allowedFields) {
             if (data[field] !== undefined) {
                 profile[field] = data[field];
             }
         }
+        if (data.hobby !== undefined) {
+            profile.interests = data.hobby;
+        }
 
         await profile.save();
-        return { success: true, message: 'Cập nhật hồ sơ thành công', profile };
+
+        // Cập nhật điểm học sinh
+        if (data.studentScores) {
+            await DiemHocSinh.upsert({
+                MaND: profile.id,
+                ...data.studentScores
+            });
+        }
+        // Cập nhật điểm người đi làm
+        if (data.workerScores) {
+            await DiemNguoiLam.upsert({
+                MaND: profile.id,
+                ...data.workerScores
+            });
+        }
+
+        // Load lại đầy đủ
+        const updatedProfile = await UserProfile.findOne({
+            where: { userId },
+            include: ['StudentScores', 'WorkerScores']
+        });
+        const profileJson = updatedProfile.toJSON();
+        profileJson.hobby = updatedProfile.interests;
+        profileJson.studentScores = updatedProfile.StudentScores || null;
+        profileJson.workerScores = updatedProfile.WorkerScores || null;
+
+        return { success: true, message: 'Cập nhật hồ sơ thành công', profile: profileJson };
     } catch (error) {
         console.error("Lỗi updateProfile:", error);
         return { success: false, message: "Lỗi hệ thống khi cập nhật hồ sơ" };
@@ -61,7 +101,13 @@ const getHistory = async (userId) => {
             return { success: true, history: [] };
         }
 
-        // Lấy thông tin kết quả đánh giá đã lưu trong profile người dùng để gán lại (nếu khớp)
+        const [discHocList, discLamList, targetHocList, targetLamList] = await Promise.all([
+            KetQuaDiscoveryHoc.findAll({ where: { userId } }),
+            KetQuaDiscoveryLam.findAll({ where: { userId } }),
+            KetQuaTargetHoc.findAll({ where: { userId } }),
+            KetQuaTargetLam.findAll({ where: { userId } }),
+        ]);
+
         const profile = await UserProfile.findOne({ where: { userId } });
 
         // Gom nhóm các câu hỏi theo từng sessionId (từng bài test)
@@ -86,14 +132,12 @@ const getHistory = async (userId) => {
                         details = `Đánh giá mức độ phù hợp với nghề ${targetCareer}.`;
                         recommendedCareer = targetCareer;
                         
-                        if (profile && profile.careerFitResult) {
-                            conclusionReason = profile.careerFitResult.advice || conclusionReason;
-                            if (profile.careerFitResult.roadmap) {
-                                roadmap = profile.careerFitResult.roadmap.map((step, index) => ({
-                                    stage: `Giai đoạn ${index + 1}`,
-                                    desc: step
-                                }));
-                            }
+                        const matchedLam = targetLamList.filter(item => item.careerName === targetCareer);
+                        const matchedHoc = targetHocList.filter(item => item.careerName === targetCareer);
+                        if (matchedLam.length > 0) {
+                            conclusionReason = `Công ty tiêu biểu: ` + matchedLam.map(c => c.companyName).join(', ');
+                        } else if (matchedHoc.length > 0) {
+                            conclusionReason = `Trường đào tạo đề xuất: ` + matchedHoc.map(s => s.schoolName).join(', ');
                         }
                     } else {
                         mode = 'discovery';
@@ -101,12 +145,14 @@ const getHistory = async (userId) => {
                         subtitle = 'Khám phá nghề nghiệp phù hợp';
                         details = 'Bài khảo sát định hướng và gợi ý lĩnh vực phù hợp.';
                         
-                        if (profile && profile.careerFitResult) {
-                            conclusionReason = profile.careerFitResult.advice || conclusionReason;
-                            if (profile.careerFitResult.compatibleCareers && profile.careerFitResult.compatibleCareers.length > 0) {
-                                recommendedCareer = profile.careerFitResult.compatibleCareers[0].career;
-                                subtitle = `Gợi ý: ${recommendedCareer}`;
-                            }
+                        if (discHocList.length > 0) {
+                            recommendedCareer = discHocList.map(c => c.careerName).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+                            subtitle = `Gợi ý: ${recommendedCareer}`;
+                            conclusionReason = `Các trường đề xuất: ` + discHocList.map(s => s.schoolName).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+                        } else if (discLamList.length > 0) {
+                            recommendedCareer = discLamList.map(c => c.careerName).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+                            subtitle = `Gợi ý: ${recommendedCareer}`;
+                            conclusionReason = `Ngành nghề đề xuất: ` + recommendedCareer;
                         }
                     }
                 } else {
@@ -115,38 +161,18 @@ const getHistory = async (userId) => {
                         title = 'Sở Thích Holland';
                         subtitle = 'Bài trắc nghiệm RIASEC';
                         details = 'Xác định nhóm sở thích nghề nghiệp trội.';
-                        if (profile && profile.hollandResult) {
-                            conclusionReason = profile.hollandResult.advice || conclusionReason;
-                            if (profile.hollandResult.careerSuggestions) {
-                                recommendedCareer = profile.hollandResult.careerSuggestions.join(', ');
-                            }
-                        }
                     } else if (q.testType === 'personality') {
                         title = 'Tính Cách Big 5';
                         subtitle = 'Đặc điểm hành vi & MBTI';
                         details = 'Phân tích tính cách chủ đạo và xu hướng.';
-                        if (profile && profile.personalityResult) {
-                            conclusionReason = profile.personalityResult.developmentAdvice || conclusionReason;
-                            recommendedCareer = profile.personalityResult.suggestedMBTI || 'Big 5';
-                        }
                     } else if (q.testType === 'cognitive') {
                         title = 'Năng Lực Nhận Thức';
                         subtitle = 'Logic, số học, ngôn ngữ';
                         details = 'Đánh giá khả năng tư duy giải quyết vấn đề.';
-                        if (profile && profile.cognitiveResult) {
-                            conclusionReason = profile.cognitiveResult.improvementSuggestions ? profile.cognitiveResult.improvementSuggestions.join('. ') : conclusionReason;
-                            recommendedCareer = `Điểm: ${profile.cognitiveResult.overallScore}/5`;
-                        }
                     } else if (q.testType === 'values') {
                         title = 'Hệ Giá Trị Cá Nhân';
                         subtitle = 'Động lực nghề nghiệp';
                         details = 'Xác định các giá trị cốt lõi thúc đẩy sự nghiệp.';
-                        if (profile && profile.valuesResult) {
-                            conclusionReason = profile.valuesResult.advice || conclusionReason;
-                            if (profile.valuesResult.topValues) {
-                                recommendedCareer = profile.valuesResult.topValues.join(', ');
-                            }
-                        }
                     }
                 }
 

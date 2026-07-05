@@ -1,0 +1,48 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'userId',
+  },
+  careerName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+  },
+  schoolName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+  },
+  benchmark2024: {
+    type: DataTypes.DECIMAL(4, 2),
+    allowNull: true,
+  },
+  benchmark2023: {
+    type: DataTypes.DECIMAL(4, 2),
+    allowNull: true,
+  },
+  benchmark2022: {
+    type: DataTypes.DECIMAL(4, 2),
+    allowNull: true,
+  },
+  officialLink: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
+  admissionLink: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  }
+}, {
+  tableName: 'target_hoc',
+  timestamps: false,
+});
+
+module.exports = KetQuaTargetHoc;

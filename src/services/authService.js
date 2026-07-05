@@ -37,19 +37,33 @@ const checkLogin = async (username, password) => {
                 where: { userId: user.id },
                 attributes: [
                     'fullName',
-                    //'targetJob',
                     'educationLevel',
-                    'careerFitScore',
-                    'careerFitResult',
                     'interests',
                 ],
             });
+
+            let profileJson = null;
+            if (profile) {
+                profileJson = {
+                    fullName: profile.fullName,
+                    educationLevel: profile.educationLevel,
+                    interests: profile.interests,
+                    hobby: profile.interests,
+                    targetJob: null,
+                    careerFitScore: null,
+                    careerFitResult: null,
+                    avatarUrl: null,
+                    dateOfBirth: null,
+                    bio: null,
+                    phone: null
+                };
+            }
 
             return {
                 success: true,
                 message: 'Đăng nhập thành công',
                 user: { id: user.id, email: user.email, role: user.role, isActive: user.isActive },
-                profile: profile ? profile.toJSON() : null,
+                profile: profileJson,
             };
   } catch (error) {
     console.error('Lỗi trong quá trình đăng nhập:', error);

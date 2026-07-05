@@ -29,7 +29,7 @@ const SurveyFeedback = sequelize.define('SurveyFeedback', {
   },
 }, {
   timestamps: true, // Will automatically add createdAt and updatedAt
-  tableName: 'survey_feedbacks'
+  tableName: 'surveyfeedback'
 });
 
 module.exports = SurveyFeedback;
