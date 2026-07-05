@@ -60,23 +60,79 @@ async function claimAssessmentResult(sessionId, userId) {
       let evalResult = null;
       const isHighSchool = isStudyingHighSchool(profile.educationLevel);
       if (testType === 'career') {
-        const isTarget = testNameSaved && testNameSaved.toLowerCase().includes('mục tiêu');
+        const testName = existingQ.testName || '';
+        const isTarget = testName.toLowerCase().includes('khảo sát nghề') || testName.toLowerCase().includes('mục tiêu') || testName.toLowerCase().includes('targeted');
         if (isTarget) {
           if (isHighSchool) {
-            const schools = await KetQuaTargetHoc.findAll({ where: { userId: uid } });
-            evalResult = { trainingInstitutions: schools };
+            const schools = await KetQuaTargetHoc.findAll({ where: { userId: uid, sessionId } });
+            evalResult = {
+              trainingInstitutions: schools.map(s => s.toJSON()),
+              roadmap: [
+                "Giai đoạn 1: Nắm bắt kiến thức cơ bản và kỹ năng tự học nền tảng",
+                "Giai đoạn 2: Tham gia hoạt động thực hành, làm đồ án/dự án nhỏ cấp trường",
+                "Giai đoạn 3: Chuẩn bị hồ sơ năng lực và ôn luyện cho kỳ thi xét tuyển chuyên ngành"
+              ]
+            };
           } else {
-            const companies = await KetQuaTargetLam.findAll({ where: { userId: uid } });
+            const companies = await KetQuaTargetLam.findAll({ where: { userId: uid, sessionId } });
             const first = companies[0] || {};
-            evalResult = { companies, laborMarket: first.laborMarket };
+            evalResult = {
+              companies: companies.map(c => c.toJSON()),
+              laborMarket: first.laborMarket,
+              roadmap: [
+                "Giai đoạn 1: Bổ sung các kiến thức nền tảng và tích lũy chứng chỉ bổ trợ chuyên ngành",
+                "Giai đoạn 2: Tham gia thiết kế/xây dựng các dự án thực tế hoặc học việc",
+                "Giai đoạn 3: Tìm kiếm cơ hội thực tập hoặc ứng tuyển chính thức vào các doanh nghiệp tiêu biểu"
+              ]
+            };
           }
         } else {
           if (isHighSchool) {
-            const schools = await KetQuaDiscoveryHoc.findAll({ where: { userId: uid } });
-            evalResult = { compatibleCareers: schools };
+            const schools = await KetQuaDiscoveryHoc.findAll({ where: { userId: uid, sessionId } });
+            const careersMap = {};
+            for (const sch of schools) {
+              const cName = sch.careerName || 'Ngành học';
+              if (!careersMap[cName]) {
+                careersMap[cName] = {
+                  career: cName,
+                  careerName: cName,
+                  reason: 'Ngành học định hướng tối ưu dựa trên sở thích và hành vi của bạn.',
+                  matchRate: 'Cao',
+                  studyInfo: {
+                    topSchools: []
+                  },
+                  workInfo: {
+                    hiringCompanies: ['FPT Software', 'Viettel', 'Các tập đoàn công nghệ'],
+                    marketDemand: 'Nhu cầu tuyển dụng cao, triển vọng phát triển tốt.'
+                  },
+                  trainingInstitutions: []
+                };
+              }
+              careersMap[cName].studyInfo.topSchools.push(sch.schoolName);
+              careersMap[cName].trainingInstitutions.push(sch.toJSON());
+            }
+            evalResult = { compatibleCareers: Object.values(careersMap) };
           } else {
-            const careers = await KetQuaDiscoveryLam.findAll({ where: { userId: uid } });
-            evalResult = { compatibleCareers: careers };
+            const careers = await KetQuaDiscoveryLam.findAll({ where: { userId: uid, sessionId } });
+            evalResult = {
+              compatibleCareers: careers.map(c => ({
+                career: c.careerName,
+                careerName: c.careerName,
+                reason: 'Ngành nghề định hướng dựa trên phân tích sở thích và hành vi của bạn.',
+                matchRate: 'Cao',
+                jobDescription: c.jobDescription,
+                roles: c.roles,
+                outlook: c.outlook,
+                requiredSkills: c.requiredSkills,
+                studyInfo: {
+                  topSchools: ['Đại học Bách Khoa', 'Đại học Quốc Gia', 'Đại học FPT']
+                },
+                workInfo: {
+                  hiringCompanies: ['FPT Software', 'Viettel', 'Các tập đoàn đa quốc gia'],
+                  marketDemand: 'Triển vọng phát triển tốt, thu nhập hấp dẫn.'
+                }
+              }))
+            };
           }
         }
       } else {
