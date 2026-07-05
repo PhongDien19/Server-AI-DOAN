@@ -27,6 +27,10 @@ function getGenerativeModelWithFallback({ model: defaultModelName, generationCon
                     model: modelName,
                     generationConfig: {
                         temperature: 0.5,
+<<<<<<< HEAD
+                        maxOutputTokens: 8192,
+=======
+>>>>>>> 389c83c0c40edc84790a663668479f1583255ee9
                         ...generationConfig
                     }
                 });
