@@ -39,6 +39,11 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
   admissionLink: {
     type: DataTypes.STRING(500),
     allowNull: true,
+  },
+  sessionId: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'sessionId',
   }
 }, {
   tableName: 'target_hoc',

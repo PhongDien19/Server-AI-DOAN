@@ -285,7 +285,17 @@ Hãy thực hiện đánh giá định hướng và trả về cấu trúc JSON 
   "advice": "Lời khuyên định hướng học tập cốt lõi và hướng chuẩn bị tiếp theo cho học sinh cấp 3 để thi tuyển hoặc đăng ký xét tuyển",
   "compatibleCareers": [
     {
+      "career": "Tên ngành học/lĩnh vực phù hợp (Ví dụ: Công nghệ thông tin)",
       "careerName": "Tên ngành học/lĩnh vực phù hợp (Ví dụ: Công nghệ thông tin)",
+      "reason": "Lý do ngắn gọn vì sao phù hợp",
+      "matchRate": "Mức độ phù hợp (Ví dụ: Cao hoặc Rất cao)",
+      "studyInfo": {
+        "topSchools": ["Tên trường đại học 1", "Tên trường 2", "Tên trường 3"]
+      },
+      "workInfo": {
+        "hiringCompanies": ["Công ty tiêu biểu 1", "Công ty 2"],
+        "marketDemand": "Triển vọng thị trường tuyển dụng ngành này"
+      },
       "trainingInstitutions": [
         {
           "schoolName": "Tên trường Đại học/Cao đẳng (Ví dụ: Trường Đại học Bách khoa Hà Nội)",
@@ -323,11 +333,21 @@ Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON ch
   "advice": "Lời khuyên định hướng sự nghiệp cốt lõi và hướng phát triển tiếp theo (cụ thể hóa dựa trên trình độ học vấn, độ tuổi và sở thích của họ)",
   "compatibleCareers": [
     {
+      "career": "Tên ngành nghề/lĩnh vực tương thích (Ví dụ: Kỹ sư phần mềm)",
       "careerName": "Tên ngành nghề/lĩnh vực tương thích (Ví dụ: Kỹ sư phần mềm)",
+      "reason": "Lý do ngắn gọn vì sao phù hợp",
+      "matchRate": "Mức độ phù hợp (Ví dụ: Cao hoặc Rất cao)",
       "jobDescription": "Mô tả công việc chi tiết",
       "roles": "Các vai trò, nhiệm vụ chính của vị trí này",
       "outlook": "Triển vọng nghề nghiệp phát triển trong tương lai",
-      "requiredSkills": "Các kỹ năng cốt lõi cần thiết (viết dưới dạng chuỗi ngăn cách bởi dấu phẩy)"
+      "requiredSkills": "Các kỹ năng cốt lõi cần thiết (viết dưới dạng chuỗi ngăn cách bởi dấu phẩy)",
+      "studyInfo": {
+        "topSchools": ["Tên trường đại học 1", "Tên trường 2"]
+      },
+      "workInfo": {
+        "hiringCompanies": ["Công ty tiêu biểu 1", "Công ty 2"],
+        "marketDemand": "Triển vọng thị trường tuyển dụng ngành này"
+      }
     }
   ]
 }
@@ -362,6 +382,11 @@ Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON ch
   "strengths": ["Điểm mạnh của học sinh phù hợp với ngành này 1", "Điểm mạnh phù hợp 2"],
   "weaknesses": ["Hạn chế hoặc kiến thức học sinh cần cải thiện để chuẩn bị cho ngành này 1", "Hạn chế 2..."],
   "advice": "Lời khuyên định hướng học tập cốt lõi và định hướng ôn tập tiếp theo đối với ngành ${targetCareer} dành cho học sinh THPT",
+  "roadmap": [
+    "Giai đoạn 1: Nắm bắt kiến thức cơ bản và kỹ năng tự học nền tảng cho ngành ${targetCareer}",
+    "Giai đoạn 2: Tham gia hoạt động thực hành, làm đồ án/dự án nhỏ cấp trường",
+    "Giai đoạn 3: Chuẩn bị hồ sơ năng lực và ôn luyện cho kỳ thi xét tuyển chuyên ngành"
+  ],
   "trainingInstitutions": [
     {
       "schoolName": "Tên trường Đại học/Cao đẳng tại khu vực ${userContext.location || 'Việt Nam'} (Ví dụ: Trường Đại học Bách khoa Hà Nội)",
@@ -400,6 +425,11 @@ Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON ch
   "strengths": ["Điểm mạnh phù hợp với ngành này 1", "Điểm mạnh phù hợp 2"],
   "weaknesses": ["Điểm yếu hoặc hạn chế cần cải thiện để làm ngành này 1", "Điểm yếu 2..."],
   "advice": "Lời khuyên định hướng sự nghiệp cốt lõi và hướng phát triển tiếp theo đối với ngành ${targetCareer} (cụ thể hóa dựa trên trình độ học vấn, độ tuổi và sở thích)",
+  "roadmap": [
+    "Giai đoạn 1: Bổ sung các kiến thức nền tảng và tích lũy chứng chỉ bổ trợ chuyên ngành cho vị trí ${targetCareer}",
+    "Giai đoạn 2: Tham gia thiết kế/xây dựng các dự án thực tế hoặc học việc để cọ xát nghiệp vụ",
+    "Giai đoạn 3: Tìm kiếm cơ hội thực tập hoặc ứng tuyển chính thức vào các doanh nghiệp tiêu biểu"
+  ],
   "companies": [
     {
       "companyName": "Tên công ty tuyển dụng tại khu vực ${userContext.location || 'Việt Nam'}",

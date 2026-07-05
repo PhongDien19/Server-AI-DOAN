@@ -35,6 +35,11 @@ const KetQuaTargetLam = sequelize.define('KetQuaTargetLam', {
   laborMarket: {
     type: DataTypes.TEXT,
     allowNull: true,
+  },
+  sessionId: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'sessionId',
   }
 }, {
   tableName: 'target_lam',

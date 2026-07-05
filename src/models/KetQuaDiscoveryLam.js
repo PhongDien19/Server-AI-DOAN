@@ -31,6 +31,11 @@ const KetQuaDiscoveryLam = sequelize.define('KetQuaDiscoveryLam', {
   requiredSkills: {
     type: DataTypes.TEXT,
     allowNull: true,
+  },
+  sessionId: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'sessionId',
   }
 }, {
   tableName: 'discovery_lam',

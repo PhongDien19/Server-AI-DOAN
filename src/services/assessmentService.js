@@ -5,7 +5,8 @@ const {
   KetQuaDiscoveryHoc,
   KetQuaDiscoveryLam,
   KetQuaTargetHoc,
-  KetQuaTargetLam
+  KetQuaTargetLam,
+  LichSuTest
 } = require("../models");
 const {
   getSessionContext,
@@ -154,9 +155,27 @@ async function claimAssessmentResult(sessionId, userId) {
 
     // --- LƯU THÔNG TIN CHI TIẾT VÀO CÁC BẢNG KẾT QUẢ ---
     try {
-      const allSessionQuestions = await Question.findAll({ where: { sessionId } });
+      // A. Tạo bản ghi lịch sử bài test trong LichSuTest
+      let modeLower = 'discovery';
+      let scoreVal = null;
 
-      // A. Lưu từng câu hỏi và câu trả lời đã trả lời vào bảng KetQua (Bỏ qua - Chỉ lưu tại bảng CauHoi để tối giản)
+      if (testType === 'career') {
+        const mode = ctx.mode || 'Discovery';
+        if (mode === 'Targeted') {
+          modeLower = 'target';
+          if (evaluation && evaluation.score != null) {
+            scoreVal = parseFloat(evaluation.score);
+          }
+        }
+      }
+
+      await LichSuTest.create({
+        userId: uid,
+        sessionId: sessionId,
+        testMode: modeLower,
+        score: scoreVal,
+        createdAt: new Date()
+      });
 
       // B. Lưu toàn bộ kết quả phân tích AI chi tiết vào các bảng kết quả tinh gọn mới
       if (testType === 'career') {
@@ -172,6 +191,7 @@ async function claimAssessmentResult(sessionId, userId) {
                   for (const school of career.trainingInstitutions) {
                     await KetQuaDiscoveryHoc.create({
                       userId: uid,
+                      sessionId: sessionId,
                       careerName: careerName,
                       schoolName: school.schoolName || '',
                       benchmark2024: school.benchmark2024 || null,
@@ -193,6 +213,7 @@ async function claimAssessmentResult(sessionId, userId) {
                 }
                 await KetQuaDiscoveryLam.create({
                   userId: uid,
+                  sessionId: sessionId,
                   careerName: career.careerName || career.career || '',
                   jobDescription: career.jobDescription || null,
                   roles: career.roles || null,
@@ -208,6 +229,7 @@ async function claimAssessmentResult(sessionId, userId) {
               for (const school of evaluation.trainingInstitutions) {
                 await KetQuaTargetHoc.create({
                   userId: uid,
+                  sessionId: sessionId,
                   careerName: targetCareer,
                   schoolName: school.schoolName || '',
                   benchmark2024: school.benchmark2024 || null,
@@ -223,6 +245,7 @@ async function claimAssessmentResult(sessionId, userId) {
               for (const comp of evaluation.companies) {
                 await KetQuaTargetLam.create({
                   userId: uid,
+                  sessionId: sessionId,
                   careerName: targetCareer,
                   companyName: comp.companyName || '',
                   companyDescription: comp.companyDescription || null,

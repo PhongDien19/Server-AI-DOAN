@@ -6,7 +6,8 @@ const {
   KetQuaDiscoveryHoc,
   KetQuaDiscoveryLam,
   KetQuaTargetHoc,
-  KetQuaTargetLam
+  KetQuaTargetLam,
+  LichSuTest
 } = require('../models');
 
 /**
@@ -85,6 +86,85 @@ const updateProfile = async (userId, data) => {
     }
 };
 
+const generateCareerMetadata = (careerName) => {
+    const normalized = (careerName || "").toLowerCase();
+    
+    // Mặc định
+    let roadmap = [
+        {
+            stage: "Giai đoạn 1: Xây dựng nền tảng",
+            desc: "Tập trung học tập các kiến thức cơ bản, phát triển tư duy tổng quan và trau dồi khả năng ngoại ngữ (Tiếng Anh giao tiếp/chuyên ngành).",
+            certs: ["Ngoại ngữ (IELTS/TOEIC)", "Tin học văn phòng"]
+        },
+        {
+            stage: "Giai đoạn 2: Phát triển chuyên môn",
+            desc: "Nghiên cứu sâu các môn học/kỹ năng nghiệp vụ chuyên ngành, thực hiện các đề án nhỏ hoặc tham gia câu lạc bộ chuyên môn.",
+            certs: ["Chứng chỉ chuyên môn cơ bản"]
+        },
+        {
+            stage: "Giai đoạn 3: Thực tiễn & Việc làm",
+            desc: "Tìm kiếm cơ hội thực tập, tham gia vào các dự án thực tế tại doanh nghiệp để tích lũy kinh nghiệm thực chiến.",
+            certs: ["Chứng chỉ thực hành chuyên nghiệp"]
+        }
+    ];
+
+    let salaries = [
+        { level: "Mới ra trường / Junior", range: "10 - 15 triệu VNĐ" },
+        { level: "Đã có kinh nghiệm / Mid", range: "18 - 28 triệu VNĐ" },
+        { level: "Quản lý / Senior", range: "35 - 55 triệu VNĐ" }
+    ];
+
+    if (normalized.includes("phần mềm") || normalized.includes("công nghệ thông tin") || normalized.includes("it") || normalized.includes("software") || normalized.includes("computer")) {
+        roadmap = [
+            {
+                stage: "Giai đoạn 1: Tư duy thuật toán & Cơ sở",
+                desc: "Nắm vững cấu trúc dữ liệu, giải thuật, cơ sở dữ liệu SQL/NoSQL và sử dụng thành thạo Git.",
+                certs: ["Git/GitHub Basics", "HackerRank Problem Solving"]
+            },
+            {
+                stage: "Giai đoạn 2: Lập trình chuyên sâu & Framework",
+                desc: "Lựa chọn chuyên ngành (Web/App) phát triển với React, Node.js, Spring Boot hoặc Flutter và làm đồ án thực tế.",
+                certs: ["React/NodeJS Developer Certificate", "Mobile Dev Essentials"]
+            },
+            {
+                stage: "Giai đoạn 3: Hệ thống & Môi trường Cloud",
+                desc: "Thực tập dự án lớn, học về Docker, CI/CD, thiết kế hệ thống chịu tải cao và dịch vụ đám mây Cloud.",
+                certs: ["AWS Cloud Practitioner", "Docker Certified Associate"]
+            }
+        ];
+        salaries = [
+            { level: "Mới tốt nghiệp / Junior", range: "12 - 20 triệu VNĐ" },
+            { level: "Có kinh nghiệm / Mid-level", range: "22 - 35 triệu VNĐ" },
+            { level: "Quản lý / Senior Developer", range: "45 - 75 triệu VNĐ" }
+        ];
+    } else if (normalized.includes("kinh doanh") || normalized.includes("marketing") || normalized.includes("quản trị") || normalized.includes("sales")) {
+        roadmap = [
+            {
+                stage: "Giai đoạn 1: Kiến thức thị trường & Sales",
+                desc: "Học hiểu hành vi khách hàng, nghiên cứu thị trường, rèn luyện kỹ năng giao tiếp và thuyết phục khách hàng.",
+                certs: ["Google Analytics", "Marketing Foundations"]
+            },
+            {
+                stage: "Giai đoạn 2: Quản lý chiến dịch & Phân tích",
+                desc: "Lập kế hoạch marketing, tối ưu hóa ngân sách chiến dịch quảng cáo kỹ thuật số, phân tích chỉ số ROI/KPI.",
+                certs: ["Google Ads Certification", "HubSpot Inbound Marketing"]
+            },
+            {
+                stage: "Giai đoạn 3: Chiến lược kinh doanh & Quản lý",
+                desc: "Lập kế hoạch chiến lược thương hiệu toàn diện, quản lý đội ngũ sales/marketing và đàm phán hợp đồng lớn.",
+                certs: ["Project Management Professional (PMP)", "Advanced Digital Strategy"]
+            }
+        ];
+        salaries = [
+            { level: "Mới tốt nghiệp / Junior", range: "9 - 14 triệu VNĐ" },
+            { level: "Có kinh nghiệm / Mid-level", range: "16 - 25 triệu VNĐ" },
+            { level: "Trưởng phòng / Senior Manager", range: "30 - 50 triệu VNĐ" }
+        ];
+    }
+
+    return { roadmap, salaries };
+};
+
 /**
  * Lấy lịch sử làm bài test của người dùng
  * @param {number} userId 
@@ -101,12 +181,18 @@ const getHistory = async (userId) => {
             return { success: true, history: [] };
         }
 
-        const [discHocList, discLamList, targetHocList, targetLamList] = await Promise.all([
+        const [discHocList, discLamList, targetHocList, targetLamList, testHistoryList] = await Promise.all([
             KetQuaDiscoveryHoc.findAll({ where: { userId } }),
             KetQuaDiscoveryLam.findAll({ where: { userId } }),
             KetQuaTargetHoc.findAll({ where: { userId } }),
             KetQuaTargetLam.findAll({ where: { userId } }),
+            LichSuTest.findAll({ where: { userId } }),
         ]);
+
+        const historyMap = {};
+        for (const h of testHistoryList) {
+            historyMap[h.sessionId] = h;
+        }
 
         const profile = await UserProfile.findOne({ where: { userId } });
 
@@ -176,6 +262,66 @@ const getHistory = async (userId) => {
                     }
                 }
 
+                let relevanceScore = null;
+                const dbHistory = historyMap[q.sessionId];
+                if (dbHistory) {
+                    mode = dbHistory.testMode;
+                    if (dbHistory.score != null) {
+                        relevanceScore = dbHistory.score;
+                    }
+                }
+
+                // Xây dựng danh sách trường học và công ty phù hợp
+                let matchingSchools = [];
+                if (mode === 'discovery') {
+                    matchingSchools = discHocList.filter(item => item.sessionId === q.sessionId).map(item => ({
+                        name: item.schoolName,
+                        major: item.careerName,
+                        location: profile?.location || 'Việt Nam',
+                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`
+                    }));
+                } else if (mode === 'target') {
+                    matchingSchools = targetHocList.filter(item => item.sessionId === q.sessionId).map(item => ({
+                        name: item.schoolName,
+                        major: item.careerName,
+                        location: profile?.location || 'Việt Nam',
+                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`
+                    }));
+                }
+                if (matchingSchools.length === 0) {
+                    matchingSchools = [
+                        { name: "Đại học Bách Khoa", major: recommendedCareer, location: "Hà Nội/TP.HCM", score: "Điểm chuẩn: 25.5" },
+                        { name: "Đại học Quốc Gia", major: recommendedCareer, location: "Hà Nội/TP.HCM", score: "Điểm chuẩn: 24.8" },
+                        { name: "Đại học RMIT / FPT", major: recommendedCareer, location: "Toàn quốc", score: "Xét tuyển/Học bạ" }
+                    ];
+                }
+
+                let hiringCompanies = [];
+                if (mode === 'discovery') {
+                    hiringCompanies = discLamList.filter(item => item.sessionId === q.sessionId).map(item => ({
+                        role: item.careerName,
+                        company: 'Tập đoàn Công nghệ/Dịch vụ',
+                        loc: profile?.location || 'Việt Nam',
+                        type: 'Toàn thời gian'
+                    }));
+                } else if (mode === 'target') {
+                    hiringCompanies = targetLamList.filter(item => item.sessionId === q.sessionId).map(item => ({
+                        role: item.careerName,
+                        company: item.companyName,
+                        loc: profile?.location || 'Việt Nam',
+                        type: 'Toàn thời gian'
+                    }));
+                }
+                if (hiringCompanies.length === 0) {
+                    hiringCompanies = [
+                        { role: `Chuyên viên ${recommendedCareer}`, company: "FPT Software / Telecom", loc: "Toàn quốc", type: "Toàn thời gian" },
+                        { role: `Kỹ sư / Nhân sự ${recommendedCareer}`, company: "Tập đoàn Viettel", loc: "Hà Nội", type: "Toàn thời gian" },
+                        { role: `Chuyên gia ${recommendedCareer}`, company: "Các công ty đa quốc gia", loc: "TP. HCM", type: "Toàn thời gian" }
+                    ];
+                }
+
+                const meta = generateCareerMetadata(recommendedCareer);
+
                 sessionsMap[q.sessionId] = {
                     sessionId: q.sessionId,
                     mode,
@@ -183,11 +329,14 @@ const getHistory = async (userId) => {
                     subtitle,
                     isCompleted: true,
                     createdAt: q.createdAt || q.NgayTao || new Date(),
-                    relevanceScore: null,
+                    relevanceScore,
                     details,
                     recommendedCareer,
                     conclusionReason,
-                    roadmap,
+                    roadmap: meta.roadmap,
+                    matchingSchools: matchingSchools,
+                    marketSalaries: meta.salaries,
+                    hiringCompanies: hiringCompanies,
                     questions: []
                 };
             }
@@ -208,6 +357,9 @@ const getHistory = async (userId) => {
 
         // Tính điểm đánh giá tương thích động dựa trên câu trả lời
         for (const session of history) {
+            if (session.relevanceScore !== null) {
+                continue; // Điểm số đã có từ CSDL
+            }
             const sessionQuestions = questions.filter(q => q.sessionId === session.sessionId);
             
             if (session.isCompleted) {
