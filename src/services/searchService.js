@@ -1,22 +1,9 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.3 } });
+const { getGenerativeModelWithFallback } = require("./geminiClient");
 
-// Ghi đè phương thức generateContent để tự động retry khi gặp lỗi (ví dụ lỗi 503 hoặc rate limit)
-const originalGenerateContent = model.generateContent.bind(model);
-model.generateContent = async function (prompt, retries = 3, delayMs = 1500) {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-            return await originalGenerateContent(prompt);
-        } catch (error) {
-            console.warn(`[Gemini API - Search] Thử lại lần ${attempt}/${retries} do lỗi:`, error.message || error);
-            if (attempt === retries) {
-                throw error;
-            }
-            await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
-        }
-    }
-};
+const model = getGenerativeModelWithFallback({
+    model: "gemini-2.5-flash",
+    generationConfig: { temperature: 0.3 }
+});
 
 /**
  * Tìm hiểu nhanh về 1 ngành nghề
