@@ -4,7 +4,7 @@ const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash", // Default model, falls back to others on error
     generationConfig: {
         temperature: 0.5, // Giảm randomness để response nhanh hơn
-        maxOutputTokens: 1024, // Giới hạn output để nhanh hơn
+        maxOutputTokens: 4096, // Tăng giới hạn output để tránh bị cắt cụt JSON
     }
 });
 

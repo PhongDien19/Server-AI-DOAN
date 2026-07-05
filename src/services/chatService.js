@@ -3,7 +3,10 @@ const { getGenerativeModelWithFallback } = require("./geminiClient");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash",
-    generationConfig: { temperature: 0.7 }
+    generationConfig: { 
+        temperature: 0.7,
+        responseMimeType: "application/json"
+    }
 });
 
 const askChatbot = async (userId, question) => {
