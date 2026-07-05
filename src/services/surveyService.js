@@ -1,6 +1,6 @@
 const { CauHoi: Question, SurveyFeedback } = require("../models");
 const { setSessionContext, getSessionContext, setPendingEvaluation } = require("./sessionContextStore");
-const { getGenerativeModelWithFallback } = require("./geminiClient");
+const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash",
@@ -178,14 +178,10 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
     const aiResult = await model.generateContent(prompt);
     let text = aiResult.response.text().trim();
 
-    // Trích xuất JSON từ phản hồi AI
-    if (text.startsWith('```json')) {
-      text = text.substring(7, text.length - 3).trim();
-    } else if (text.startsWith('```')) {
-      text = text.substring(3, text.length - 3).trim();
+    const generatedSurvey = extractJsonFromText(text);
+    if (!generatedSurvey) {
+      throw new Error("Không thể trích xuất JSON hợp lệ từ phản hồi của AI.");
     }
-
-    const generatedSurvey = JSON.parse(text);
 
     // Chuẩn hóa và lưu vào DB
     const questionRecords = generatedSurvey.questions.map((q, index) => ({
@@ -420,13 +416,10 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
 
     const aiResult = await model.generateContent(prompt);
     let text = aiResult.response.text().trim();
-    if (text.startsWith('```json')) {
-      text = text.substring(7, text.length - 3).trim();
-    } else if (text.startsWith('```')) {
-      text = text.substring(3, text.length - 3).trim();
+    const evaluation = extractJsonFromText(text);
+    if (!evaluation) {
+      throw new Error("Không thể trích xuất JSON hợp lệ từ phản hồi đánh giá của AI.");
     }
-
-    const evaluation = JSON.parse(text);
     evaluation.mode = mode;
     evaluation.targetCareer = targetCareer;
 
