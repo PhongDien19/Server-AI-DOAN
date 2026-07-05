@@ -1,5 +1,5 @@
 const { Taikhoan: UserAccount, NguoiDung, Chatbox, KetQuaDiscoveryHoc, KetQuaDiscoveryLam, KetQuaTargetHoc, KetQuaTargetLam } = require("../models");
-const { getGenerativeModelWithFallback } = require("./geminiClient");
+const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash",
@@ -118,17 +118,8 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
         const result = await model.generateContent(prompt);
         let text = result.response.text().trim();
 
-        // Trích xuất JSON từ phản hồi AI
-        if (text.startsWith('```json')) {
-            text = text.substring(7, text.length - 3).trim();
-        } else if (text.startsWith('```')) {
-            text = text.substring(3, text.length - 3).trim();
-        }
-
-        let parsedResult;
-        try {
-            parsedResult = JSON.parse(text);
-        } catch (e) {
+        let parsedResult = extractJsonFromText(text);
+        if (!parsedResult) {
             console.warn("[Chatbot] Không thể parse JSON từ AI, sử dụng fallback plain text.");
             parsedResult = {
                 answer: text,

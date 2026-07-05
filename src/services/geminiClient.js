@@ -27,7 +27,6 @@ function getGenerativeModelWithFallback({ model: defaultModelName, generationCon
                     model: modelName,
                     generationConfig: {
                         temperature: 0.5,
-                        maxOutputTokens: 1024,
                         ...generationConfig
                     }
                 });
@@ -67,6 +66,43 @@ function getGenerativeModelWithFallback({ model: defaultModelName, generationCon
     };
 }
 
+/**
+ * Extracts and parses JSON from standard AI text responses, handling markdown codeblocks.
+ */
+function extractJsonFromText(text) {
+    if (!text || typeof text !== 'string') return null;
+
+    // Remove markdown fences and leading labels
+    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenceMatch) {
+        text = fenceMatch[1];
+    }
+
+    // Find the first JSON object by braces
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+        const candidate = text.slice(start, end + 1);
+        try {
+            return JSON.parse(candidate);
+        } catch (_) {
+            // continue to fallback
+        }
+    }
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+        try {
+            return JSON.parse(jsonMatch[0]);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    return null;
+}
+
 module.exports = {
-    getGenerativeModelWithFallback
+    getGenerativeModelWithFallback,
+    extractJsonFromText
 };

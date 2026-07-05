@@ -1,4 +1,4 @@
-const { getGenerativeModelWithFallback } = require("./geminiClient");
+const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash",
@@ -78,13 +78,11 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
         const result = await model.generateContent(prompt);
         let text = result.response.text().trim();
 
-        if (text.startsWith('```json')) {
-            text = text.substring(7, text.length - 3).trim();
-        } else if (text.startsWith('```')) {
-            text = text.substring(3, text.length - 3).trim();
+        const parsed = extractJsonFromText(text);
+        if (!parsed) {
+            throw new Error("Không thể trích xuất JSON hợp lệ từ phản hồi của AI.");
         }
-
-        return JSON.parse(text);
+        return parsed;
     } catch (error) {
         console.error("Lỗi trong searchCareerQuickly service:", error);
         throw error;
