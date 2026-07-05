@@ -2,8 +2,6 @@ const {
   Taikhoan,
   NguoiDung,
   CauHoi,
-  KetQua,
-  Chatbox,
   Prompt,
   SurveyFeedback,
   sequelize

@@ -3,8 +3,6 @@ const sequelize = require('../config/database');
 const Taikhoan = require('./Taikhoan');
 const NguoiDung = require('./NguoiDung');
 const CauHoi = require('./CauHoi');
-const KetQua = require('./KetQua');
-const Chatbox = require('./Chatbox');
 const Prompt = require('./Prompt');
 const SurveyFeedback = require('./SurveyFeedback');
 const KetQuaDiscoveryHoc = require('./KetQuaDiscoveryHoc');
@@ -28,18 +26,6 @@ DiemHocSinh.belongsTo(NguoiDung, { foreignKey: 'MaND', as: 'Profile' });
 NguoiDung.hasOne(DiemNguoiLam, { foreignKey: 'MaND', as: 'WorkerScores' });
 DiemNguoiLam.belongsTo(NguoiDung, { foreignKey: 'MaND', as: 'Profile' });
 
-// NguoiDung <-> Chatbox (1-n)
-NguoiDung.hasMany(Chatbox, { foreignKey: 'MaND', as: 'Messages' });
-Chatbox.belongsTo(NguoiDung, { foreignKey: 'MaND', as: 'User' });
-
-// NguoiDung <-> KetQua (1-n)
-NguoiDung.hasMany(KetQua, { foreignKey: 'MaND', as: 'Results' });
-KetQua.belongsTo(NguoiDung, { foreignKey: 'MaND', as: 'User' });
-
-// CauHoi <-> KetQua (1-n)
-CauHoi.hasMany(KetQua, { foreignKey: 'MaCH', as: 'Results' });
-KetQua.belongsTo(CauHoi, { foreignKey: 'MaCH', as: 'Question' });
-
 // Taikhoan <-> KetQuaDiscoveryHoc (1-n)
 Taikhoan.hasMany(KetQuaDiscoveryHoc, { foreignKey: 'userId', as: 'DiscoveryHocResults' });
 KetQuaDiscoveryHoc.belongsTo(Taikhoan, { foreignKey: 'userId', as: 'Account' });
@@ -61,8 +47,6 @@ module.exports = {
   Taikhoan,
   NguoiDung,
   CauHoi,
-  KetQua,
-  Chatbox,
   Prompt,
   SurveyFeedback,
   KetQuaDiscoveryHoc,

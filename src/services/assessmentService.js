@@ -2,7 +2,6 @@ const {
   Taikhoan: UserAccount,
   NguoiDung: UserProfile,
   CauHoi: Question,
-  KetQua,
   KetQuaDiscoveryHoc,
   KetQuaDiscoveryLam,
   KetQuaTargetHoc,
@@ -157,22 +156,7 @@ async function claimAssessmentResult(sessionId, userId) {
     try {
       const allSessionQuestions = await Question.findAll({ where: { sessionId } });
 
-      // A. Lưu từng câu hỏi và câu trả lời đã trả lời vào bảng KetQua (Nhật ký câu trả lời)
-      for (const q of allSessionQuestions) {
-        let score = 5.0; // Điểm mặc định
-        const ansVal = parseFloat(q.userAnswer);
-        if (!isNaN(ansVal)) {
-          score = ansVal;
-        }
-
-        await KetQua.create({
-          MaCH: q.id,
-          CauTL: q.userAnswer || 'Chưa trả lời',
-          SoDiem: score,
-          MaND: profile.id,
-          NgayLamBai: new Date()
-        });
-      }
+      // A. Lưu từng câu hỏi và câu trả lời đã trả lời vào bảng KetQua (Bỏ qua - Chỉ lưu tại bảng CauHoi để tối giản)
 
       // B. Lưu toàn bộ kết quả phân tích AI chi tiết vào các bảng kết quả tinh gọn mới
       if (testType === 'career') {

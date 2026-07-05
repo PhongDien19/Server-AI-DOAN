@@ -1,4 +1,4 @@
-const { Taikhoan: UserAccount, NguoiDung, Chatbox, KetQuaDiscoveryHoc, KetQuaDiscoveryLam, KetQuaTargetHoc, KetQuaTargetLam } = require("../models");
+const { Taikhoan: UserAccount, NguoiDung, KetQuaDiscoveryHoc, KetQuaDiscoveryLam, KetQuaTargetHoc, KetQuaTargetLam } = require("../models");
 const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
 
 const model = getGenerativeModelWithFallback({
@@ -134,22 +134,7 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
         const answerText = parsedResult.answer || text;
         const optionsList = parsedResult.options || [];
 
-        // Lưu log tin nhắn vào bảng Chatbox (sử dụng text thuần cho sạch)
-        if (profile) {
-            const chatSessionId = Math.floor(Date.now() / 1000); // Mã phiên chat tạm thời
-            await Chatbox.create({
-                MaND: profile.id,
-                MaChat: chatSessionId,
-                NguoiGui: 'user',
-                NoiDung: question
-            });
-            await Chatbox.create({
-                MaND: profile.id,
-                MaChat: chatSessionId,
-                NguoiGui: 'bot',
-                NoiDung: answerText
-            });
-        }
+        // Bỏ qua việc lưu log tin nhắn vào bảng Chatbox để tối giản dữ liệu
 
         return {
             success: true,
