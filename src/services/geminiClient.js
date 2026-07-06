@@ -1,17 +1,68 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Candidate models in order of preference
+// Candidate models in order of preference.
+// LƯU Ý: `gemini-2.5-flash-lite` đã bị Google gỡ khỏi free tier cho nhiều project
+// (lỗi `Quota exceeded ... limit: 0`).
+// `gemini-1.5-flash-8b` cũng trả 404 trên v1beta cho nhiều API key — không dùng nữa.
 const MODEL_CANDIDATES = [
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-2.5-flash-lite"
+    "gemini-2.5-flash"
 ];
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 /**
+ * Trích số giây cần chờ từ thông điệp lỗi Gemini (RetryInfo).
+ * Gemini trả về cảnh báo kiểu:
+ *   "Please retry in 45.19s. ..."
+ * Trả về milliseconds, hoặc null nếu không tìm thấy.
+ */
+function extractRetryDelayMs(errorMessage) {
+    if (!errorMessage || typeof errorMessage !== 'string') return null;
+    const match = errorMessage.match(/retry in\s+([\d.]+)\s*s/i);
+    if (match && match[1]) {
+        const seconds = parseFloat(match[1]);
+        if (!Number.isNaN(seconds) && seconds > 0 && seconds <= 120) {
+            // Cộng thêm 1 giây buffer để chắc chắn quota đã được reset
+            return Math.ceil(seconds * 1000) + 1000;
+        }
+    }
+    return null;
+}
+
+/**
+ * Phân loại lỗi 429 / quota từ Gemini để quyết định hành động:
+ *   - 'quota-exhausted': limit = 0 hoặc message không có RetryInfo
+ *       -> KHÔNG chờ retry, chuyển thẳng sang model tiếp theo.
+ *   - 'rate-limited': có RetryInfo (vd: "Please retry in 45.19s")
+ *       -> Chờ đúng khoảng thời gian RetryInfo rồi thử lại cùng model.
+ *   - null: không phải lỗi quota, để fallback xử lý chung.
+ */
+function classifyQuotaError(error) {
+    const msg = (error && error.message) ? String(error.message) : '';
+    const status = error && error.status;
+    const looksLike429 = status === 429 ||
+        msg.includes('Quota exceeded') ||
+        msg.includes('Too Many Requests') ||
+        msg.includes('429');
+    if (!looksLike429) return null;
+
+    const retryAfterMs = extractRetryDelayMs(msg);
+    // `limit: 0` nghĩa là project này thực sự không có quota cho model, chờ vô ích.
+    const hardExhausted = /limit:\s*0/i.test(msg) || /\bquota exceeded\b/i.test(msg) && !retryAfterMs;
+
+    if (retryAfterMs && !hardExhausted) {
+        return { kind: 'rate-limited', retryAfterMs };
+    }
+    return { kind: 'quota-exhausted', retryAfterMs: null };
+}
+
+/**
  * Creates a model client wrapper that automatically falls back to other Gemini models
  * when encountering a 429 (Too Many Requests) or other quota/rate limit error.
+ *
+ * - Tự động chờ theo `RetryInfo` mà Gemini trả về (nếu có) trước khi thử lại cùng model.
+ * - Có exponential backoff giữa các lần retry.
+ * - Thử lần lượt các model trong MODEL_CANDIDATES.
  */
 function getGenerativeModelWithFallback({ model: defaultModelName, generationConfig = {} }) {
     return {
@@ -39,24 +90,27 @@ function getGenerativeModelWithFallback({ model: defaultModelName, generationCon
                         return result;
                     } catch (error) {
                         lastError = error;
-                        const status = error.status || (error.message && error.message.includes('429') ? 429 : null);
-                        const isRateLimit = status === 429 || 
-                                            error.message?.includes("Quota exceeded") || 
-                                            error.message?.includes("Too Many Requests") || 
-                                            error.message?.includes("429");
+                        const quota = classifyQuotaError(error);
 
                         console.warn(`[Gemini API] Lỗi với model ${modelName} (Lần thử ${attempt}/${retries}):`, error.message || error);
 
-                        if (isRateLimit) {
-                            console.warn(`[Gemini API] Bị giới hạn quota/rate limit (429) với model ${modelName}. Chuyển sang model tiếp theo.`);
-                            break; // break out of retry loop for this model, fallback to next model
+                        // Trường hợp 1: rate-limit có RetryInfo -> chờ rồi thử lại cùng model
+                        if (quota && quota.kind === 'rate-limited' && attempt < retries) {
+                            console.warn(`[Gemini API] Bị rate-limit 429. Chờ ${quota.retryAfterMs}ms theo RetryInfo rồi thử lại model ${modelName}...`);
+                            await new Promise(resolve => setTimeout(resolve, quota.retryAfterMs));
+                            continue;
                         }
 
+                        // Trường hợp 2: quota cạn kiệt hoàn toàn (limit:0) hoặc hết retry -> sang model tiếp theo
+                        if (quota) {
+                            console.warn(`[Gemini API] Bị giới hạn quota với model ${modelName}. Chuyển sang model tiếp theo.`);
+                            break;
+                        }
+
+                        // Trường hợp 3: lỗi khác (5xx, mạng...) -> exponential backoff
                         if (attempt === retries) {
-                            break; // try next model
+                            break;
                         }
-
-                        // Exponential backoff
                         await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
                     }
                 }

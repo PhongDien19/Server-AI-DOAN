@@ -54,10 +54,33 @@ app.use('/api/search', searchRoutes);
 app.use('/api/admin', adminRoutes);
 
 // 1. Endpoint tư vấn nghề nghiệp tổng quát (POST)
+// Body: { question, userContext: { requestType, targetJob, educationLevel, age, hobby, location } }
+// response: { advice, success, errorMessage }
+//   - success=true  & advice hợp lệ (chuỗi hoặc object) : kết quả AI
+//   - success=false & errorMessage                    : backend gặp lỗi (ví dụ AI hết quota)
 app.post('/api/consult', async (req, res) => {
-  const { info } = req.body;
-  const advice = await getCareerAdvice(info);
-  res.json({ advice });
+  try {
+    const body = req.body || {};
+    const advice = await getCareerAdvice(body);
+
+    if (advice && typeof advice === 'object' && advice.__error) {
+      // Trả về kết quả rỗng cho phía client, kèm success=false để FE biết mà hiển thị lỗi
+      return res.status(503).json({
+        success: false,
+        errorMessage: advice.message || 'Dịch vụ tư vấn AI tạm thời gián đoạn',
+        advice: null
+      });
+    }
+
+    return res.json({ success: true, advice });
+  } catch (error) {
+    console.error("Lỗi /api/consult:", error);
+    return res.status(500).json({
+      success: false,
+      errorMessage: error.message || 'Lỗi máy chủ nội bộ',
+      advice: null
+    });
+  }
 });
 
 // 2. Endpoint tạo bài test chi tiết (POST)

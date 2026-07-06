@@ -31,6 +31,29 @@ const isStudyingHighSchool = (education) => {
  * Gắn kết quả chấm điểm đang chờ với user đã đăng nhập, cập nhật profile và gán userId cho câu hỏi.
  * Lưu ý bảo mật: production nên xác thực JWT thay vì tin userId từ body.
  */
+
+/**
+ * Chuẩn hóa một trường text trước khi lưu DB.
+ * - Nếu là null/undefined -> trả về null
+ * - Nếu là mảng -> nối các phần tử bằng dấu ", "
+ * - Nếu là object -> JSON.stringify
+ * - Ngược lại -> ép về chuỗi
+ */
+function normalizeTextField(value) {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    return value.map((v) => (v === null || v === undefined ? '' : String(v))).join(', ');
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (e) {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
 async function claimAssessmentResult(sessionId, userId) {
   if (!sessionId || userId == null) {
     return { success: false, message: "Thiếu sessionId hoặc userId" };
@@ -263,30 +286,27 @@ async function claimAssessmentResult(sessionId, userId) {
           } else {
             if (evaluation.compatibleCareers && Array.isArray(evaluation.compatibleCareers)) {
               for (const career of evaluation.compatibleCareers) {
-                let requiredSkillsStr = career.requiredSkills || '';
-                if (Array.isArray(requiredSkillsStr)) {
-                  requiredSkillsStr = requiredSkillsStr.join(', ');
-                }
                 await KetQuaDiscoveryLam.create({
                   userId: uid,
                   sessionId: sessionId,
                   careerName: career.careerName || career.career || '',
-                  jobDescription: career.jobDescription || null,
-                  roles: career.roles || null,
-                  outlook: career.outlook || null,
-                  requiredSkills: requiredSkillsStr || null
+                  jobDescription: normalizeTextField(career.jobDescription),
+                  roles: normalizeTextField(career.roles),
+                  outlook: normalizeTextField(career.outlook),
+                  requiredSkills: normalizeTextField(career.requiredSkills)
                 });
               }
             }
           }
         } else if (mode === 'Targeted') {
+          const targetCareerName = ctx.targetCareer || evaluation.targetCareer || '';
           if (isHighSchool) {
             if (evaluation.trainingInstitutions && Array.isArray(evaluation.trainingInstitutions)) {
               for (const school of evaluation.trainingInstitutions) {
                 await KetQuaTargetHoc.create({
                   userId: uid,
                   sessionId: sessionId,
-                  careerName: targetCareer,
+                  careerName: targetCareerName,
                   schoolName: school.schoolName || '',
                   benchmark2024: school.benchmark2024 || null,
                   benchmark2023: school.benchmark2023 || null,
@@ -302,12 +322,12 @@ async function claimAssessmentResult(sessionId, userId) {
                 await KetQuaTargetLam.create({
                   userId: uid,
                   sessionId: sessionId,
-                  careerName: targetCareer,
+                  careerName: targetCareerName,
                   companyName: comp.companyName || '',
-                  companyDescription: comp.companyDescription || null,
-                  careerLink: comp.careerLink || null,
-                  basicSalary: comp.basicSalary || null,
-                  laborMarket: comp.laborMarket || null
+                  companyDescription: normalizeTextField(comp.companyDescription),
+                  careerLink: normalizeTextField(comp.careerLink),
+                  basicSalary: normalizeTextField(comp.basicSalary),
+                  laborMarket: normalizeTextField(comp.laborMarket)
                 });
               }
             }

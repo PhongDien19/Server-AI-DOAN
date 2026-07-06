@@ -4,8 +4,12 @@ const { getGenerativeModelWithFallback, extractJsonFromText } = require("./gemin
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash",
-    generationConfig: { 
+    generationConfig: {
         temperature: 0.5,
+        // gemini-2.5-flash mac dinh dung 1 phan token cho "thinking/reasoning"
+        // (thoughtsTokenCount), nen can maxOutputTokens du lon de phan JSON
+        // tra ve khong bi cat cut.
+        maxOutputTokens: 8192,
         responseMimeType: "application/json"
     }
 });
@@ -180,6 +184,8 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
 
     const generatedSurvey = extractJsonFromText(text);
     if (!generatedSurvey) {
+      // In ra 500 ky tu dau cua phan hoi de biet tai sao parse loi
+      console.error("[Survey] Khong the parse JSON. Phan hoi tho (500 ky tu dau):", text.slice(0, 500));
       throw new Error("Không thể trích xuất JSON hợp lệ từ phản hồi của AI.");
     }
 
@@ -448,6 +454,7 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
     let text = aiResult.response.text().trim();
     const evaluation = extractJsonFromText(text);
     if (!evaluation) {
+      console.error("[Survey] Khong the parse JSON cham diem. Phan hoi tho (500 ky tu dau):", text.slice(0, 500));
       throw new Error("Không thể trích xuất JSON hợp lệ từ phản hồi đánh giá của AI.");
     }
     evaluation.mode = mode;
