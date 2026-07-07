@@ -69,10 +69,15 @@ async function claimAssessmentResult(sessionId, userId) {
     return { success: false, message: "Tài khoản không tồn tại" };
   }
 
-  const profile = await UserProfile.findOne({ where: { userId: uid } });
-  if (!profile) {
-    return { success: false, message: "Không tìm thấy UserProfile" };
-  }
+  let profile = await UserProfile.findOne({ where: { userId: uid } });
+    if (!profile) {
+      profile = await UserProfile.create({
+        userId: uid,
+        fullName: account.email,
+        educationLevel: null,
+        interests: null,
+      });
+    }
 
   const pending = peekPendingEvaluation(sessionId);
   if (!pending || !pending.evaluation) {

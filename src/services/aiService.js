@@ -439,7 +439,43 @@ async function evaluateCareerTest(testName, questions, userContext = {}) {
             ctx.educationLevel && `Education: ${ctx.educationLevel}`,
             ctx.hobby && `Hobby: ${ctx.hobby}`,
             ctx.age && `Age: ${ctx.age}`,
+            ctx.status && `Status: ${ctx.status === 'student' ? 'Học sinh THCS/THPT' : 'Sinh viên/Người đi làm'}`
         ].filter(Boolean).join(', ');
+
+        const isStudent = ctx.status === 'student';
+
+        const studentJsonFormat = `{
+  "score": 1-5 (decimal 0.5 steps),
+  "summary": "Phân tích ngắn gọn cho học sinh, tập trung vào tiềm năng và định hướng.",
+  "strengths": ["Điểm mạnh 1", "Điểm mạnh 2"],
+  "weaknesses": ["Điểm yếu cần cải thiện 1", "Điểm yếu cần cải thiện 2"],
+  "advice": "Lời khuyên cụ thể cho học sinh để chuẩn bị cho ngành này.",
+  "trainingInstitutions": [
+    {
+      "schoolName": "Tên trường đại học/cao đẳng hàng đầu",
+      "description": "Mô tả ngắn về điểm nổi bật của trường liên quan đến ngành này.",
+      "benchmarkScores": "Điểm chuẩn 3 năm gần nhất (ví dụ: 2023: 25.5, 2022: 25.0, 2021: 24.5)",
+      "officialLink": "URL trang chủ của trường",
+      "admissionLink": "URL trang tuyển sinh của trường"
+    }
+  ]
+}`;
+
+        const workingJsonFormat = `{
+  "score": 1-5 (decimal 0.5 steps),
+  "summary": "Phân tích ngắn gọn cho sinh viên/người đi làm, tập trung vào phát triển sự nghiệp.",
+  "strengths": ["Điểm mạnh 1", "Điểm mạnh 2"],
+  "weaknesses": ["Điểm yếu cần cải thiện 1", "Điểm yếu cần cải thiện 2"],
+  "advice": "Lời khuyên cụ thể để thăng tiến trong ngành này.",
+  "roadmap": [
+    "Giai đoạn 1: Học các kiến thức nền tảng về ngành.",
+    "Giai đoạn 2: Xây dựng 1-2 dự án cá nhân để áp dụng kiến thức.",
+    "Giai đoạn 3: Tìm hiểu và thi các chứng chỉ cơ bản."
+  ],
+  "certificates": ["Chứng chỉ A", "Chứng chỉ B"],
+  "basicSalary": "Mức lương khởi điểm cho vị trí Junior dao động từ 10-15 triệu VNĐ/tháng.",
+  "laborMarket": "Nhu cầu nhân lực cho ngành này đang tăng trưởng mạnh, đặc biệt ở các thành phố lớn."
+}`;
 
         const prompt = `Đánh giá phù hợp nghề cho "${testName}".
 
@@ -448,14 +484,14 @@ Profile: ${profile || "N/A"}
 Answers:
 ${qaList}
 
-Return JSON:
-{
-  "score": 1-5 (decimal 0.5 steps),
-  "summary": "Brief 2-3 sentence analysis",
-  "strengths": ["point1", "point2"],
-  "weaknesses": ["point1", "point2"],
-  "advice": "Final advice"
-}`;
+DỰA VÀO TRƯỜNG "Status" TRONG PROFILE, HÃY CHỌN 1 TRONG 2 ĐỊNH DẠNG JSON SAU ĐỂ TRẢ VỀ.
+
+1. Nếu Status là "Học sinh THCS/THPT", trả về JSON theo định dạng sau:
+${studentJsonFormat}
+
+2. Nếu Status là "Sinh viên/Người đi làm", trả về JSON theo định dạng sau:
+${workingJsonFormat}
+`;
 
         const result = await Promise.race([
             model.generateContent(prompt),
