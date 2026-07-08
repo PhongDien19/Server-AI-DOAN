@@ -42,6 +42,11 @@ const NguoiDung = sequelize.define('NguoiDung', {
     type: DataTypes.TEXT,
     allowNull: true,
     field: 'SoThich'
+  },
+  targetJob: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'NgheNghiepMT'
   }
 }, {
   tableName: 'nguoidung',

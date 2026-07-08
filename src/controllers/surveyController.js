@@ -3,7 +3,7 @@ const { claimAssessmentResult } = require('../services/assessmentService');
 
 const initSurvey = async (req, res) => {
     try {
-        const { mode, target_career, age, education, location, hobby } = req.body;
+        const { mode, target_career, age, education, location, hobby, academicData } = req.body;
         // Validate input
         if (!mode || !['Targeted', 'Discovery'].includes(mode)) {
             return res.status(400).json({ success: false, message: 'mode phải là Targeted hoặc Discovery' });
@@ -12,7 +12,7 @@ const initSurvey = async (req, res) => {
             return res.status(400).json({ success: false, message: 'target_career là bắt buộc khi mode = Targeted' });
         }
 
-        const result = await surveyService.initSurvey(mode, target_career, { age, education, location, hobby });
+        const result = await surveyService.initSurvey(mode, target_career, { age, education, location, hobby, academicData });
         res.status(200).json({ success: true, ...result });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

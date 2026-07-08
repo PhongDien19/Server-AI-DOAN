@@ -2,6 +2,8 @@ const {
   Taikhoan: UserAccount,
   NguoiDung: UserProfile,
   CauHoi: Question,
+  DiemHocSinh,
+  DiemNguoiLam,
   KetQuaDiscoveryHoc,
   KetQuaDiscoveryLam,
   KetQuaTargetHoc,
@@ -256,6 +258,41 @@ async function claimAssessmentResult(sessionId, userId) {
 
     await profile.update(updateData);
 
+    // --- LƯU ĐIỂM SỐ HỌC TẬP NẾU CÓ academicData ---
+    const acadData = ctx.academicData || ctx.userContext?.academicData;
+    if (acadData) {
+      const isStudent = isStudyingHighSchool(profile.educationLevel);
+      if (isStudent && (acadData.type === 'high_school' || acadData.scores)) {
+        const scores = acadData.scores || {};
+        const getVal = (keys) => {
+          for (const k of keys) {
+            if (scores[k] !== undefined && scores[k] !== null) return scores[k];
+          }
+          return null;
+        };
+        await DiemHocSinh.upsert({
+          MaND: profile.id,
+          Toan: getVal(['Toán', 'Toan']),
+          Van: getVal(['Văn', 'Van']),
+          Anh: getVal(['Anh Văn', 'Anh']),
+          Ly: getVal(['Lý', 'Ly']),
+          Hoa: getVal(['Hoá', 'Hoa']),
+          Sinh: getVal(['Sinh']),
+          Su: getVal(['Lịch sử', 'Sử', 'Su']),
+          Dia: getVal(['Địa lý', 'Địa', 'Dia']),
+          GDCD: getVal(['GDCD'])
+        });
+      } else if (!isStudent) {
+        const gpaVal = acadData.gpa ?? acadData.scores?.gpa ?? acadData.scores?.GPA;
+        if (gpaVal !== undefined && gpaVal !== null) {
+          await DiemNguoiLam.upsert({
+            MaND: profile.id,
+            GPA: parseFloat(gpaVal) || null
+          });
+        }
+      }
+    }
+
     await Question.update({ userId: uid }, { where: { sessionId } });
 
     // --- LƯU THÔNG TIN CHI TIẾT VÀO CÁC BẢNG KẾT QUẢ ---
@@ -303,9 +340,9 @@ async function claimAssessmentResult(sessionId, userId) {
                       sessionId: sessionId,
                       careerName: careerName,
                       schoolName: school.schoolName || school.name || '',
+                      benchmark2025: school.benchmark2025 || null,
                       benchmark2024: school.benchmark2024 || null,
                       benchmark2023: school.benchmark2023 || null,
-                      benchmark2022: school.benchmark2022 || null,
                       officialLink: school.officialLink || school.link || null,
                       admissionLink: school.admissionLink || null
                     });
@@ -373,11 +410,12 @@ async function claimAssessmentResult(sessionId, userId) {
                   diem: diemValue,
                   careerName: targetCareerName,
                   schoolName: school.schoolName || school.name || '',
+                  benchmark2025: school.benchmark2025 || null,
                   benchmark2024: school.benchmark2024 || null,
                   benchmark2023: school.benchmark2023 || null,
-                  benchmark2022: school.benchmark2022 || null,
                   officialLink: school.officialLink || school.link || null,
-                  admissionLink: school.admissionLink || null
+                  admissionLink: school.admissionLink || null,
+                  scoreEvaluation: school.scoreEvaluation || null
                 });
               }
             }
@@ -417,6 +455,7 @@ async function claimAssessmentResult(sessionId, userId) {
 
   const profileJson = profile.toJSON();
   profileJson.hobby = profile.interests;
+  profileJson.isStudent = isStudyingHighSchool(profile.educationLevel);
 
   return {
     success: true,

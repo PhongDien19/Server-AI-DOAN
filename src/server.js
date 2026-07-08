@@ -24,7 +24,7 @@ const { checkLogin, register } = require('./services/authService');
 const { saveQuestions, getQuestions } = require('./services/testService');
 const { getSessionContext, setPendingEvaluation, setSessionContext } = require('./services/sessionContextStore');
 const { claimAssessmentResult } = require('./services/assessmentService');
-const { getProfile, updateProfile, getHistory } = require('./services/profileService');
+const { getProfile, updateProfile, getHistory, getScores, saveScores, deleteScores } = require('./services/profileService');
 
 // Import Routes
 const surveyRoutes = require('./routes/surveyRoutes');
@@ -276,6 +276,24 @@ app.put('/api/profile/:userId', async (req, res) => {
 app.get('/api/history/:userId', async (req, res) => {
   const result = await getHistory(req.params.userId);
   res.status(result.success ? 200 : 500).json(result);
+});
+
+// 12. Endpoint lấy điểm số của người dùng (GET)
+app.get('/api/profile/:userId/scores', async (req, res) => {
+  const result = await getScores(req.params.userId);
+  res.status(result.success ? 200 : 404).json(result);
+});
+
+// 13. Endpoint lưu/cập nhật điểm số của người dùng (POST)
+app.post('/api/profile/:userId/scores', async (req, res) => {
+  const result = await saveScores(req.params.userId, req.body);
+  res.status(result.success ? 200 : 400).json(result);
+});
+
+// 14. Endpoint xóa điểm số của người dùng (DELETE)
+app.delete('/api/profile/:userId/scores', async (req, res) => {
+  const result = await deleteScores(req.params.userId);
+  res.status(result.success ? 200 : 400).json(result);
 });
 
 // 12. Endpoint gộp tạo câu hỏi trắc nghiệm (Holland, Personality, Cognitive, Values)

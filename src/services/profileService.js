@@ -10,6 +10,18 @@ const {
   LichSuTest
 } = require('../models');
 
+const isStudyingHighSchool = (education) => {
+  if (!education) return false;
+  const eduLower = String(education).toLowerCase().trim();
+  if (eduLower.includes("đại học") || eduLower.includes("đi làm") || eduLower.includes("cao đẳng") || eduLower.includes("tốt nghiệp")) {
+    return false;
+  }
+  return eduLower.includes("thpt") ||
+    eduLower.includes("học sinh") ||
+    eduLower.includes("cấp 3") ||
+    eduLower.includes("đang học");
+};
+
 /**
  * Lấy thông tin hồ sơ người dùng
  * @param {number} userId 
@@ -34,6 +46,107 @@ const getProfile = async (userId) => {
     }
 };
 
+/**
+ * Lấy điểm số của người dùng (học sinh hoặc người đi làm)
+ * @param {number} userId 
+ */
+const getScores = async (userId) => {
+    try {
+        const profile = await UserProfile.findOne({ where: { userId } });
+        if (!profile) {
+            return { success: false, message: 'Không tìm thấy hồ sơ người dùng' };
+        }
+
+        const isStudent = isStudyingHighSchool(profile.educationLevel);
+        
+        if (isStudent) {
+            const studentScores = await DiemHocSinh.findByPk(profile.id);
+            return { 
+                success: true, 
+                type: 'high_school', 
+                scores: studentScores ? studentScores.toJSON() : null 
+            };
+        } else {
+            const workerScores = await DiemNguoiLam.findByPk(profile.id);
+            return { 
+                success: true, 
+                type: 'university_worker', 
+                scores: workerScores ? workerScores.toJSON() : null 
+            };
+        }
+    } catch (error) {
+        console.error("Lỗi getScores:", error);
+        return { success: false, message: "Lỗi hệ thống khi lấy điểm số" };
+    }
+};
+
+/**
+ * Lưu hoặc cập nhật điểm số của người dùng
+ * @param {number} userId 
+ * @param {object} data - { type: 'high_school' | 'university_worker', scores: {...} }
+ */
+const saveScores = async (userId, data) => {
+    try {
+        const profile = await UserProfile.findOne({ where: { userId } });
+        if (!profile) {
+            return { success: false, message: 'Không tìm thấy hồ sơ người dùng' };
+        }
+
+        const type = data.type || (data.studentScores ? 'high_school' : 'university_worker');
+        const scores = data.scores || data.studentScores || data.workerScores || {};
+        
+        if (type === 'high_school') {
+            const mappedScores = {
+                Toan: scores['Toán'] || scores['Toan'] || null,
+                Van: scores['Văn'] || scores['Van'] || null,
+                Anh: scores['Anh Văn'] || scores['Anh'] || null,
+                Ly: scores['Lý'] || scores['Ly'] || null,
+                Hoa: scores['Hoá'] || scores['Hoa'] || null,
+                Sinh: scores['Sinh'] || null,
+                Su: scores['Lịch sử'] || scores['Sử'] || scores['Su'] || null,
+                Dia: scores['Địa lý'] || scores['Địa'] || scores['Dia'] || null,
+                GDCD: scores['GDCD'] || null,
+            };
+            await DiemHocSinh.upsert({
+                MaND: profile.id,
+                ...mappedScores
+            });
+        } else {
+            const gpaVal = scores['GPA'] ?? scores['gpa'] ?? 0.0;
+            await DiemNguoiLam.upsert({
+                MaND: profile.id,
+                GPA: parseFloat(gpaVal) || 0.0
+            });
+        }
+
+        return { success: true, message: 'Lưu điểm số thành công' };
+    } catch (error) {
+        console.error("Lỗi saveScores:", error);
+        return { success: false, message: "Lỗi hệ thống khi lưu điểm số" };
+    }
+};
+
+/**
+ * Xóa điểm số của người dùng
+ * @param {number} userId 
+ */
+const deleteScores = async (userId) => {
+    try {
+        const profile = await UserProfile.findOne({ where: { userId } });
+        if (!profile) {
+            return { success: false, message: 'Không tìm thấy hồ sơ người dùng' };
+        }
+
+        await DiemHocSinh.destroy({ where: { MaND: profile.id } });
+        await DiemNguoiLam.destroy({ where: { MaND: profile.id } });
+
+        return { success: true, message: 'Xóa điểm số thành công' };
+    } catch (error) {
+        console.error("Lỗi deleteScores:", error);
+        return { success: false, message: "Lỗi hệ thống khi xóa điểm số" };
+    }
+};
+
 const updateProfile = async (userId, data) => {
     try {
         const profile = await UserProfile.findOne({ where: { userId } });
@@ -42,7 +155,7 @@ const updateProfile = async (userId, data) => {
         }
 
         // Chỉ cho phép cập nhật các trường này của hồ sơ cơ bản
-        const allowedFields = ['fullName', 'age', 'educationLevel', 'studyStatus', 'location', 'interests'];
+        const allowedFields = ['fullName', 'age', 'educationLevel', 'studyStatus', 'location', 'interests', 'targetJob'];
         for (const field of allowedFields) {
             if (data[field] !== undefined) {
                 profile[field] = data[field];
@@ -56,16 +169,28 @@ const updateProfile = async (userId, data) => {
 
         // Cập nhật điểm học sinh
         if (data.studentScores) {
+            const mappedScores = {
+                Toan: data.studentScores['Toán'] || data.studentScores['Toan'] || null,
+                Van: data.studentScores['Văn'] || data.studentScores['Van'] || null,
+                Anh: data.studentScores['Anh Văn'] || data.studentScores['Anh'] || null,
+                Ly: data.studentScores['Lý'] || data.studentScores['Ly'] || null,
+                Hoa: data.studentScores['Hoá'] || data.studentScores['Hoa'] || null,
+                Sinh: data.studentScores['Sinh'] || null,
+                Su: data.studentScores['Lịch sử'] || data.studentScores['Sử'] || data.studentScores['Su'] || null,
+                Dia: data.studentScores['Địa lý'] || data.studentScores['Địa'] || data.studentScores['Dia'] || null,
+                GDCD: data.studentScores['GDCD'] || null,
+            };
             await DiemHocSinh.upsert({
                 MaND: profile.id,
-                ...data.studentScores
+                ...mappedScores
             });
         }
         // Cập nhật điểm người đi làm
         if (data.workerScores) {
+            const gpaVal = data.workerScores['GPA'] ?? data.workerScores['gpa'] ?? 0.0;
             await DiemNguoiLam.upsert({
                 MaND: profile.id,
-                ...data.workerScores
+                GPA: parseFloat(gpaVal) || 0.0
             });
         }
 
@@ -210,6 +335,7 @@ const getHistory = async (userId) => {
 
                 if (q.testType === 'career') {
                     const isTarget = q.testName && q.testName.toLowerCase().includes('khảo sát nghề');
+                    const isStudent = profile ? isStudyingHighSchool(profile.educationLevel) : false;
                     if (isTarget) {
                         mode = 'target';
                         title = 'Mục Tiêu (Target)';
@@ -218,12 +344,14 @@ const getHistory = async (userId) => {
                         details = `Đánh giá mức độ phù hợp với nghề ${targetCareer}.`;
                         recommendedCareer = targetCareer;
                         
-                        const matchedLam = targetLamList.filter(item => item.careerName === targetCareer);
-                        const matchedHoc = targetHocList.filter(item => item.careerName === targetCareer);
-                        if (matchedLam.length > 0) {
-                            conclusionReason = `Công ty tiêu biểu: ` + matchedLam.map(c => c.companyName).join(', ');
-                        } else if (matchedHoc.length > 0) {
-                            conclusionReason = `Trường đào tạo đề xuất: ` + matchedHoc.map(s => s.schoolName).join(', ');
+                        // Lọc theo sessionId để tránh nhầm lẫn giữa các bài test
+                        const sessionLam = targetLamList.filter(item => item.sessionId === q.sessionId);
+                        const sessionHoc = targetHocList.filter(item => item.sessionId === q.sessionId);
+                        
+                        if (sessionLam.length > 0) {
+                            conclusionReason = `Công ty tiêu biểu: ` + sessionLam.map(c => c.companyName).join(', ');
+                        } else if (sessionHoc.length > 0) {
+                            conclusionReason = `Trường đào tạo đề xuất: ` + sessionHoc.map(s => s.schoolName).join(', ');
                         }
                     } else {
                         mode = 'discovery';
@@ -231,12 +359,18 @@ const getHistory = async (userId) => {
                         subtitle = 'Khám phá nghề nghiệp phù hợp';
                         details = 'Bài khảo sát định hướng và gợi ý lĩnh vực phù hợp.';
                         
-                        if (discHocList.length > 0) {
-                            recommendedCareer = discHocList.map(c => c.careerName).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+                        // Lọc theo sessionId
+                        const sessionHoc = discHocList.filter(item => item.sessionId === q.sessionId);
+                        const sessionLam = discLamList.filter(item => item.sessionId === q.sessionId);
+                        
+                        if (sessionHoc.length > 0) {
+                            const uniqueCareers = [...new Set(sessionHoc.map(c => c.careerName))];
+                            recommendedCareer = uniqueCareers.join(', ');
                             subtitle = `Gợi ý: ${recommendedCareer}`;
-                            conclusionReason = `Các trường đề xuất: ` + discHocList.map(s => s.schoolName).filter((v, i, a) => a.indexOf(v) === i).join(', ');
-                        } else if (discLamList.length > 0) {
-                            recommendedCareer = discLamList.map(c => c.careerName).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+                            conclusionReason = `Các trường đề xuất: ` + [...new Set(sessionHoc.map(s => s.schoolName))].join(', ');
+                        } else if (sessionLam.length > 0) {
+                            const uniqueCareers = [...new Set(sessionLam.map(c => c.careerName))];
+                            recommendedCareer = uniqueCareers.join(', ');
                             subtitle = `Gợi ý: ${recommendedCareer}`;
                             conclusionReason = `Ngành nghề đề xuất: ` + recommendedCareer;
                         }
@@ -264,6 +398,7 @@ const getHistory = async (userId) => {
 
                 let relevanceScore = null;
                 const dbHistory = historyMap[q.sessionId];
+                const isStudent = profile ? isStudyingHighSchool(profile.educationLevel) : false;
                 if (dbHistory) {
                     mode = dbHistory.testMode;
                     if (dbHistory.score != null) {
@@ -278,7 +413,7 @@ const getHistory = async (userId) => {
                         name: item.schoolName,
                         major: item.careerName,
                         location: profile?.location || 'Việt Nam',
-                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`,
+                        score: `Điểm chuẩn: ${item.benchmark2025 || item.benchmark2024 || 'N/A'}`,
                         officialLink: item.officialLink || null,
                         admissionLink: item.admissionLink || null
                     }));
@@ -287,7 +422,7 @@ const getHistory = async (userId) => {
                         name: item.schoolName,
                         major: item.careerName,
                         location: profile?.location || 'Việt Nam',
-                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`,
+                        score: `Điểm chuẩn: ${item.benchmark2025 || item.benchmark2024 || 'N/A'}`,
                         officialLink: item.officialLink || null,
                         admissionLink: item.admissionLink || null
                     }));
@@ -338,6 +473,8 @@ const getHistory = async (userId) => {
                     title,
                     subtitle,
                     isCompleted: true,
+                    isStudent: isStudent,
+                    educationLevel: profile?.educationLevel || null,
                     createdAt: q.createdAt || q.NgayTao || new Date(),
                     relevanceScore,
                     details,
@@ -427,5 +564,8 @@ const getHistory = async (userId) => {
 module.exports = {
     getProfile,
     updateProfile,
-    getHistory
+    getHistory,
+    getScores,
+    saveScores,
+    deleteScores
 };

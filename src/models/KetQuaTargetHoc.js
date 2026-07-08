@@ -25,6 +25,10 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
     type: DataTypes.STRING(255),
     allowNull: false,
   },
+  benchmark2025: {
+    type: DataTypes.DECIMAL(4, 2),
+    allowNull: true,
+  },
   benchmark2024: {
     type: DataTypes.DECIMAL(4, 2),
     allowNull: true,
@@ -37,12 +41,24 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
     type: DataTypes.DECIMAL(4, 2),
     allowNull: true,
   },
+  scoreEvaluation: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
   officialLink: {
     type: DataTypes.STRING(500),
     allowNull: true,
   },
   admissionLink: {
     type: DataTypes.STRING(500),
+    allowNull: true,
+  },
+  benchmark2025: {
+    type: DataTypes.DECIMAL(4, 2),
+    allowNull: true,
+  },
+  scoreEvaluation: {
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   sessionId: {

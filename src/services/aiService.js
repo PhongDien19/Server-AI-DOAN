@@ -243,7 +243,7 @@ NHIỆM VỤ: Gợi ý danh sách các trường Đại học/Cao đẳng tại 
 QUY TẮC BẮT BUỘC:
 1. Chỉ trả về JSON hợp lệ, KHÔNG kèm markdown, KHÔNG giải thích thêm.
 2. Cung cấp ĐÚNG từ 4 đến 6 trường.
-3. Mỗi trường PHẢI có đầy đủ: schoolName, major (tên ngành), location (tỉnh/thành phố), description (mô tả ngắn 1-2 câu về điểm mạnh đào tạo ngành này), benchmarks (chuỗi mô tả điểm chuẩn 3 năm gần nhất 2024/2023/2022, ví dụ "2024: 26.5 - 2023: 25.0 - 2022: 24.0"), officialLink (URL trang chủ), admissionLink (URL cổng tuyển sinh).
+3. Mỗi trường PHẢI có đầy đủ: schoolName, major (tên ngành), location (tỉnh/thành phố), description (mô tả ngắn 1-2 câu về điểm mạnh đào tạo ngành này), benchmarks (chuỗi mô tả điểm chuẩn 3 năm gần nhất 2025/2024/2023, ví dụ "2025: 26.5 - 2024: 25.0 - 2023: 24.0"), officialLink (URL trang chủ), admissionLink (URL cổng tuyển sinh).
 4. Nếu không chắc chắn điểm chuẩn chính xác thì đặt "Đang cập nhật".
 5. BẮT BUỘC trả về JSON theo cấu trúc:
 {
