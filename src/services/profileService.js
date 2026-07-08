@@ -278,21 +278,25 @@ const getHistory = async (userId) => {
                         name: item.schoolName,
                         major: item.careerName,
                         location: profile?.location || 'Việt Nam',
-                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`
+                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`,
+                        officialLink: item.officialLink || null,
+                        admissionLink: item.admissionLink || null
                     }));
                 } else if (mode === 'target') {
                     matchingSchools = targetHocList.filter(item => item.sessionId === q.sessionId).map(item => ({
                         name: item.schoolName,
                         major: item.careerName,
                         location: profile?.location || 'Việt Nam',
-                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`
+                        score: `Điểm chuẩn: ${item.benchmark2024 || 'N/A'}`,
+                        officialLink: item.officialLink || null,
+                        admissionLink: item.admissionLink || null
                     }));
                 }
                 if (matchingSchools.length === 0) {
                     matchingSchools = [
-                        { name: "Đại học Bách Khoa", major: recommendedCareer, location: "Hà Nội/TP.HCM", score: "Điểm chuẩn: 25.5" },
-                        { name: "Đại học Quốc Gia", major: recommendedCareer, location: "Hà Nội/TP.HCM", score: "Điểm chuẩn: 24.8" },
-                        { name: "Đại học RMIT / FPT", major: recommendedCareer, location: "Toàn quốc", score: "Xét tuyển/Học bạ" }
+                        { name: "Đại học Bách Khoa", major: recommendedCareer, location: "Hà Nội/TP.HCM", score: "Điểm chuẩn: 25.5", officialLink: null, admissionLink: null },
+                        { name: "Đại học Quốc Gia", major: recommendedCareer, location: "Hà Nội/TP.HCM", score: "Điểm chuẩn: 24.8", officialLink: null, admissionLink: null },
+                        { name: "Đại học RMIT / FPT", major: recommendedCareer, location: "Toàn quốc", score: "Xét tuyển/Học bạ", officialLink: null, admissionLink: null }
                     ];
                 }
 
@@ -300,23 +304,29 @@ const getHistory = async (userId) => {
                 if (mode === 'discovery') {
                     hiringCompanies = discLamList.filter(item => item.sessionId === q.sessionId).map(item => ({
                         role: item.careerName,
-                        company: 'Tập đoàn Công nghệ/Dịch vụ',
+                        company: item.companyName || 'Tập đoàn Công nghệ/Dịch vụ',
                         loc: profile?.location || 'Việt Nam',
-                        type: 'Toàn thời gian'
+                        type: 'Toàn thời gian',
+                        salary: item.basicSalary || null,
+                        description: item.companyDescription || null,
+                        careerLink: item.careerLink || null
                     }));
                 } else if (mode === 'target') {
                     hiringCompanies = targetLamList.filter(item => item.sessionId === q.sessionId).map(item => ({
                         role: item.careerName,
                         company: item.companyName,
                         loc: profile?.location || 'Việt Nam',
-                        type: 'Toàn thời gian'
+                        type: 'Toàn thời gian',
+                        salary: item.basicSalary || null,
+                        description: item.companyDescription || null,
+                        careerLink: item.careerLink || null
                     }));
                 }
                 if (hiringCompanies.length === 0) {
                     hiringCompanies = [
-                        { role: `Chuyên viên ${recommendedCareer}`, company: "FPT Software / Telecom", loc: "Toàn quốc", type: "Toàn thời gian" },
-                        { role: `Kỹ sư / Nhân sự ${recommendedCareer}`, company: "Tập đoàn Viettel", loc: "Hà Nội", type: "Toàn thời gian" },
-                        { role: `Chuyên gia ${recommendedCareer}`, company: "Các công ty đa quốc gia", loc: "TP. HCM", type: "Toàn thời gian" }
+                        { role: `Chuyên viên ${recommendedCareer}`, company: "FPT Software / Telecom", loc: "Toàn quốc", type: "Toàn thời gian", salary: null, description: null },
+                        { role: `Kỹ sư / Nhân sự ${recommendedCareer}`, company: "Tập đoàn Viettel", loc: "Hà Nội", type: "Toàn thời gian", salary: null, description: null },
+                        { role: `Chuyên gia ${recommendedCareer}`, company: "Các công ty đa quốc gia", loc: "TP. HCM", type: "Toàn thời gian", salary: null, description: null }
                     ];
                 }
 

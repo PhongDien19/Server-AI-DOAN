@@ -118,9 +118,7 @@ const socialLogin = async (provider, providerId, email, displayName, avatarUrl) 
       // Tự động tạo một Profile cho user mới
       await UserProfile.create({
         userId: user.id,
-        email: email || '', // Gán email vào email của profile
-        fullName: displayName || '', // Tên đầy đủ từ Google/FB
-        avatarUrl: avatarUrl || '',
+        fullName: displayName || '',
       });
     } else {
       // 4. Nếu đã có tài khoản thì chỉ cập nhật lastLogin
@@ -170,9 +168,7 @@ const register = async (email, password, fullName) => {
     // 4. Tạo profile cho user
     await UserProfile.create({
       userId: newUser.id,
-      email: email,
       fullName: fullName || '',
-      avatarUrl: '',
     });
 
     return { 

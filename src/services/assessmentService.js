@@ -142,25 +142,46 @@ async function claimAssessmentResult(sessionId, userId) {
             evalResult = { compatibleCareers: Object.values(careersMap) };
           } else {
             const careers = await KetQuaDiscoveryLam.findAll({ where: { userId: uid, sessionId } });
-            evalResult = {
-              compatibleCareers: careers.map(c => ({
-                career: c.careerName,
-                careerName: c.careerName,
-                reason: 'Ngành nghề định hướng dựa trên phân tích sở thích và hành vi của bạn.',
-                matchRate: 'Cao',
-                jobDescription: c.jobDescription,
-                roles: c.roles,
-                outlook: c.outlook,
-                requiredSkills: c.requiredSkills,
-                studyInfo: {
-                  topSchools: ['Đại học Bách Khoa', 'Đại học Quốc Gia', 'Đại học FPT']
-                },
-                workInfo: {
-                  hiringCompanies: ['FPT Software', 'Viettel', 'Các tập đoàn đa quốc gia'],
-                  marketDemand: 'Triển vọng phát triển tốt, thu nhập hấp dẫn.'
-                }
-              }))
-            };
+            const careersMap = {};
+            for (const c of careers) {
+              const cName = c.careerName || 'Ngành học';
+              if (!careersMap[cName]) {
+                careersMap[cName] = {
+                  career: cName,
+                  careerName: cName,
+                  reason: 'Ngành nghề định hướng dựa trên phân tích sở thích và hành vi của bạn.',
+                  matchRate: 'Cao',
+                  jobDescription: c.jobDescription,
+                  roles: c.roles,
+                  outlook: c.outlook,
+                  requiredSkills: c.requiredSkills,
+                  studyInfo: {
+                    topSchools: ['Đại học Bách Khoa', 'Đại học Quốc Gia', 'Đại học FPT']
+                  },
+                  workInfo: {
+                    hiringCompanies: [],
+                    marketDemand: c.companyDescription || 'Triển vọng phát triển tốt, thu nhập hấp dẫn.'
+                  },
+                  companyDetails: []
+                };
+              }
+              if (c.companyName) {
+                careersMap[cName].workInfo.hiringCompanies.push(c.companyName);
+                careersMap[cName].companyDetails.push({
+                  companyName: c.companyName,
+                  companyDescription: c.companyDescription,
+                  careerLink: c.careerLink,
+                  basicSalary: c.basicSalary
+                });
+              }
+            }
+            // Fallback for hiringCompanies if empty
+            for (const cName in careersMap) {
+              if (careersMap[cName].workInfo.hiringCompanies.length === 0) {
+                careersMap[cName].workInfo.hiringCompanies = ['FPT Software', 'Viettel', 'Các tập đoàn đa quốc gia'];
+              }
+            }
+            evalResult = { compatibleCareers: Object.values(careersMap) };
           }
         }
       } else {
@@ -266,22 +287,26 @@ async function claimAssessmentResult(sessionId, userId) {
         const mode = ctx.mode || 'Discovery';
         const isHighSchool = isStudyingHighSchool(ctx.userContext?.education || profile.educationLevel);
 
+        // Lấy điểm đánh giá để lưu vào cột diem
+        const diemValue = evaluation.score != null ? Math.round(evaluation.score) : null;
+
         if (mode === 'Discovery') {
           if (isHighSchool) {
             if (evaluation.compatibleCareers && Array.isArray(evaluation.compatibleCareers)) {
               for (const career of evaluation.compatibleCareers) {
                 const careerName = career.careerName || career.career || '';
-                if (career.trainingInstitutions && Array.isArray(career.trainingInstitutions)) {
-                  for (const school of career.trainingInstitutions) {
+                const schools = career.trainingInstitutions || career.schools || [];
+                if (Array.isArray(schools)) {
+                  for (const school of schools) {
                     await KetQuaDiscoveryHoc.create({
                       userId: uid,
                       sessionId: sessionId,
                       careerName: careerName,
-                      schoolName: school.schoolName || '',
+                      schoolName: school.schoolName || school.name || '',
                       benchmark2024: school.benchmark2024 || null,
                       benchmark2023: school.benchmark2023 || null,
                       benchmark2022: school.benchmark2022 || null,
-                      officialLink: school.officialLink || null,
+                      officialLink: school.officialLink || school.link || null,
                       admissionLink: school.admissionLink || null
                     });
                   }
@@ -291,48 +316,85 @@ async function claimAssessmentResult(sessionId, userId) {
           } else {
             if (evaluation.compatibleCareers && Array.isArray(evaluation.compatibleCareers)) {
               for (const career of evaluation.compatibleCareers) {
-                await KetQuaDiscoveryLam.create({
-                  userId: uid,
-                  sessionId: sessionId,
-                  careerName: career.careerName || career.career || '',
-                  jobDescription: normalizeTextField(career.jobDescription),
-                  roles: normalizeTextField(career.roles),
-                  outlook: normalizeTextField(career.outlook),
-                  requiredSkills: normalizeTextField(career.requiredSkills)
-                });
+                const careerName = career.careerName || career.career || '';
+                const jobDescription = normalizeTextField(career.jobDescription);
+                const roles = normalizeTextField(career.roles);
+                const outlook = normalizeTextField(career.outlook);
+                const requiredSkills = normalizeTextField(career.requiredSkills);
+
+                if (career.companyDetails && Array.isArray(career.companyDetails) && career.companyDetails.length > 0) {
+                  for (const comp of career.companyDetails) {
+                    await KetQuaDiscoveryLam.create({
+                      userId: uid,
+                      sessionId: sessionId,
+                      careerName: careerName,
+                      jobDescription: jobDescription,
+                      roles: roles,
+                      outlook: outlook,
+                      requiredSkills: requiredSkills,
+                      companyName: comp.companyName || null,
+                      companyDescription: normalizeTextField(comp.companyDescription) || null,
+                      careerLink: comp.careerLink || null,
+                      basicSalary: comp.basicSalary || null
+                    });
+                  }
+                } else {
+                  // Fallback if AI didn't return companyDetails
+                  const hiringCompanies = career.workInfo?.hiringCompanies || [];
+                  const marketDemand = career.workInfo?.marketDemand || '';
+                  const companyName = hiringCompanies.length > 0 ? hiringCompanies[0] : null;
+
+                  await KetQuaDiscoveryLam.create({
+                    userId: uid,
+                    sessionId: sessionId,
+                    careerName: careerName,
+                    jobDescription: jobDescription,
+                    roles: roles,
+                    outlook: outlook,
+                    requiredSkills: requiredSkills,
+                    companyName: companyName,
+                    companyDescription: normalizeTextField(marketDemand),
+                    careerLink: null,
+                    basicSalary: null
+                  });
+                }
               }
             }
           }
         } else if (mode === 'Targeted') {
           const targetCareerName = ctx.targetCareer || evaluation.targetCareer || '';
           if (isHighSchool) {
-            if (evaluation.trainingInstitutions && Array.isArray(evaluation.trainingInstitutions)) {
-              for (const school of evaluation.trainingInstitutions) {
+            const schools = evaluation.trainingInstitutions || evaluation.schools || [];
+            if (Array.isArray(schools)) {
+              for (const school of schools) {
                 await KetQuaTargetHoc.create({
                   userId: uid,
                   sessionId: sessionId,
+                  diem: diemValue,
                   careerName: targetCareerName,
-                  schoolName: school.schoolName || '',
+                  schoolName: school.schoolName || school.name || '',
                   benchmark2024: school.benchmark2024 || null,
                   benchmark2023: school.benchmark2023 || null,
                   benchmark2022: school.benchmark2022 || null,
-                  officialLink: school.officialLink || null,
+                  officialLink: school.officialLink || school.link || null,
                   admissionLink: school.admissionLink || null
                 });
               }
             }
           } else {
-            if (evaluation.companies && Array.isArray(evaluation.companies)) {
-              for (const comp of evaluation.companies) {
+            const targetCompanies = evaluation.companies || evaluation.companyDetails || [];
+            if (Array.isArray(targetCompanies)) {
+              for (const comp of targetCompanies) {
                 await KetQuaTargetLam.create({
                   userId: uid,
                   sessionId: sessionId,
+                  diem: diemValue,
                   careerName: targetCareerName,
-                  companyName: comp.companyName || '',
-                  companyDescription: normalizeTextField(comp.companyDescription),
-                  careerLink: normalizeTextField(comp.careerLink),
-                  basicSalary: normalizeTextField(comp.basicSalary),
-                  laborMarket: normalizeTextField(comp.laborMarket)
+                  companyName: comp.companyName || comp.name || '',
+                  companyDescription: normalizeTextField(comp.companyDescription || comp.description),
+                  careerLink: normalizeTextField(comp.careerLink || comp.link),
+                  basicSalary: normalizeTextField(comp.basicSalary || comp.salary),
+                  laborMarket: normalizeTextField(comp.laborMarket || evaluation.laborMarket)
                 });
               }
             }

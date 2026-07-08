@@ -12,6 +12,11 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
     allowNull: true,
     field: 'userId',
   },
+  diem: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0,
+  },
   careerName: {
     type: DataTypes.STRING(255),
     allowNull: false,
@@ -48,6 +53,12 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
 }, {
   tableName: 'target_hoc',
   timestamps: false,
+  indexes: [
+    {
+      name: 'idx_target_hoc_careerName',
+      fields: ['careerName']
+    }
+  ]
 });
 
 module.exports = KetQuaTargetHoc;

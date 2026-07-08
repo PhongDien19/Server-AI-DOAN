@@ -48,6 +48,12 @@ const KetQuaDiscoveryHoc = sequelize.define('KetQuaDiscoveryHoc', {
 }, {
   tableName: 'discovery_hoc',
   timestamps: false,
+  indexes: [
+    {
+      name: 'idx_discovery_hoc_careerName',
+      fields: ['careerName']
+    }
+  ]
 });
 
 module.exports = KetQuaDiscoveryHoc;

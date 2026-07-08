@@ -329,7 +329,8 @@ ${JSON.stringify(parsedAnswers)}
 
 YÊU CẦU QUAN TRỌNG VỀ ĐÁNH GIÁ VÀ HƯỚNG NGHIỆP:
 1. LƯU Ý: Không chấm điểm tương thích hay đánh giá Passed/Failed vì đây là bài khảo sát tự khám phá định hướng tổng quan. Do đó, JSON trả về KHÔNG chứa các trường "score" và "status".
-2. Đề xuất các ngành nghề phù hợp kèm theo mô tả công việc, vai trò, triển vọng và kỹ năng cốt lõi cần thiết.
+2. Đề xuất các ngành nghề phù hợp kèm theo mô tả công việc, vai trò, triển vọng, kỹ năng cốt lõi và thông tin tuyển dụng chi tiết.
+3. Ưu tiên chọn các trường học, công ty nằm trong khu vực sinh sống của người dùng (${userContext.location || 'Việt Nam'}).
 
 Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON chính xác như sau:
 {
@@ -353,7 +354,15 @@ Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON ch
       "workInfo": {
         "hiringCompanies": ["Công ty tiêu biểu 1", "Công ty 2"],
         "marketDemand": "Triển vọng thị trường tuyển dụng ngành này"
-      }
+      },
+      "companyDetails": [
+        {
+          "companyName": "Tên công ty tuyển dụng tại khu vực ${userContext.location || 'Việt Nam'}",
+          "companyDescription": "Mô tả ngắn gọn về công ty, quy mô và môi trường làm việc",
+          "careerLink": "Link trang tuyển dụng hoặc trang chủ của công ty",
+          "basicSalary": "Mức lương cơ bản của nghề này tại công ty (Ví dụ: 15-20 triệu VNĐ)"
+        }
+      ]
     }
   ]
 }

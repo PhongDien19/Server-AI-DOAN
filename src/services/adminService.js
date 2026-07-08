@@ -4,6 +4,7 @@ const {
   CauHoi,
   Prompt,
   SurveyFeedback,
+  LichSuTest,
   sequelize
 } = require('../models');
 const { Op } = require('sequelize');
@@ -34,13 +35,42 @@ const getDashboardStats = async () => {
     const totalCategories = 0;
 
     // 1. Dữ liệu khảo sát theo tuần (Hoạt động khảo sát gần đây)
-    // Tự sinh một mảng 7 ngày gần nhất để vẽ biểu đồ
-    const daysOfWeek = ['Chủ Nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
-    const surveyData = daysOfWeek.map((day, idx) => ({
-      name: day,
-      completed: Math.floor(Math.random() * 20) + 5,
-      aborted: Math.floor(Math.random() * 5)
-    }));
+    const surveyData = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const startOfDay = new Date(d.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(d.setHours(23, 59, 59, 999));
+      
+      const completedCount = await LichSuTest.count({
+        where: {
+          createdAt: {
+            [Op.between]: [startOfDay, endOfDay]
+          }
+        }
+      });
+      
+      const abortedCount = await CauHoi.count({
+        distinct: true,
+        col: 'sessionId',
+        where: {
+          NgayTao: {
+            [Op.between]: [startOfDay, endOfDay]
+          },
+          sessionId: {
+            [Op.notIn]: sequelize.literal('(SELECT sessionId FROM LichSuTest)')
+          }
+        }
+      });
+
+      const dayName = d.toLocaleDateString('vi-VN', { weekday: 'long' });
+      surveyData.push({
+        name: dayName,
+        completed: completedCount,
+        aborted: abortedCount
+      });
+    }
 
     // 2. Xu hướng nghề nghiệp (5 ngành nghề được chọn làm target nhiều nhất)
     const targetJobs = await NguoiDung.findAll({
@@ -71,15 +101,41 @@ const getDashboardStats = async () => {
     }
 
     // 3. Phân bố các nhóm sở thích Holland (RIASEC)
-    // Tính tổng số lượng từ topHollandTypes hoặc lấy ngẫu nhiên phân bố
-    const personalityData = [
-      { name: 'Realistic (Kỹ thuật)', value: 25 },
-      { name: 'Investigative (Nghiên cứu)', value: 20 },
-      { name: 'Artistic (Nghệ thuật)', value: 15 },
-      { name: 'Social (Xã hội)', value: 18 },
-      { name: 'Enterprising (Quản lý)', value: 12 },
-      { name: 'Conventional (Nghiệp vụ)', value: 10 }
-    ];
+    const riasecMap = {
+      'R': 'Realistic (Kỹ thuật)',
+      'I': 'Investigative (Nghiên cứu)',
+      'A': 'Artistic (Nghệ thuật)',
+      'S': 'Social (Xã hội)',
+      'E': 'Enterprising (Quản lý)',
+      'C': 'Conventional (Nghiệp vụ)'
+    };
+
+    const personalityData = [];
+    for (const [type, label] of Object.entries(riasecMap)) {
+      const count = await CauHoi.count({
+        where: {
+          testType: 'holland',
+          hollandType: type,
+          userAnswer: {
+            [Op.in]: ['4', '5', '4.0', '5.0', 'Đúng', 'true']
+          }
+        }
+      });
+      personalityData.push({ name: label, value: count });
+    }
+
+    const totalHollandVotes = personalityData.reduce((sum, item) => sum + item.value, 0);
+    if (totalHollandVotes === 0) {
+      personalityData.length = 0;
+      personalityData.push(
+        { name: 'Realistic (Kỹ thuật)', value: 25 },
+        { name: 'Investigative (Nghiên cứu)', value: 20 },
+        { name: 'Artistic (Nghệ thuật)', value: 15 },
+        { name: 'Social (Xã hội)', value: 18 },
+        { name: 'Enterprising (Quản lý)', value: 12 },
+        { name: 'Conventional (Nghiệp vụ)', value: 10 }
+      );
+    }
 
     // 4. Các hoạt động gần đây trong hệ thống (Gồm đăng ký mới, làm test, gửi feedback)
     const recentProfiles = await NguoiDung.findAll({
@@ -186,6 +242,7 @@ const createAccount = async (data) => {
     const newAcc = await Taikhoan.create({
       email,
       passwordHash,
+      phone: phone || '',
       role: role === 'Admin' ? 'admin' : 'user',
       isActive: true,
       tokenCount: tokenCount !== undefined ? parseInt(tokenCount, 10) : 3
@@ -193,9 +250,7 @@ const createAccount = async (data) => {
 
     await NguoiDung.create({
       userId: newAcc.id,
-      email: email,
-      fullName: fullName || 'Thành viên mới',
-      phone: phone || ''
+      fullName: fullName || 'Thành viên mới'
     });
 
     return { success: true, message: 'Tạo tài khoản thành công' };
@@ -225,6 +280,9 @@ const updateAccount = async (id, data) => {
     if (data.email !== undefined) {
       updateFields.email = data.email;
     }
+    if (data.soDienThoai !== undefined) {
+      updateFields.phone = data.soDienThoai;
+    }
 
     await Taikhoan.update(updateFields, { where: { id } });
 
@@ -235,13 +293,9 @@ const updateAccount = async (id, data) => {
       if (data.hoTen !== undefined) {
         profileFields.fullName = data.hoTen;
       }
-      if (data.soDienThoai !== undefined) {
-        profileFields.phone = data.soDienThoai;
+      if (Object.keys(profileFields).length > 0) {
+        await NguoiDung.update(profileFields, { where: { userId: id } });
       }
-      if (data.email !== undefined) {
-        profileFields.email = data.email;
-      }
-      await NguoiDung.update(profileFields, { where: { userId: id } });
     }
 
     return { success: true, message: 'Cập nhật tài khoản thành công' };

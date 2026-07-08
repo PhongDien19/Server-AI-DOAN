@@ -434,9 +434,7 @@ app.listen(PORT, async () => {
       });
       await NguoiDung.create({
         userId: user.id,
-        email: email,
         fullName: 'Phong Điền',
-        targetJob: 'Lập trình viên',
         educationLevel: 'Đại học',
         interests: 'Đọc sách, Công nghệ'
       });
