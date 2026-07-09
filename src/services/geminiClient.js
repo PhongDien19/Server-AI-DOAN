@@ -127,31 +127,64 @@ function getGenerativeModelWithFallback({ model: defaultModelName, generationCon
 function extractJsonFromText(text) {
     if (!text || typeof text !== 'string') return null;
 
-    // Remove markdown fences and leading labels
+    // Loại bỏ markdown fences (```json ... ```) nếu có
     const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (fenceMatch) {
         text = fenceMatch[1];
     }
 
-    // Find the first JSON object by braces
+    // Helper: thử parse, nếu lỗi thì thử cắt dần về trước để tìm JSON hợp lệ
+    const tryParse = (candidate) => {
+        try {
+            return JSON.parse(candidate);
+        } catch (_) {
+            return null;
+        }
+    };
+
+    // Helper: cắt ngược từ cuối chuỗi tới khi parse được
+    // (hữu ích khi Gemini trả về JSON bị truncate giữa chừng do maxOutputTokens)
+    const parseWithTruncationRecovery = (candidate) => {
+        // Thử parse nguyên bản trước
+        let parsed = tryParse(candidate);
+        if (parsed) return parsed;
+
+        // Nếu fail, cắt dần ký tự cuối cho tới khi parse được
+        // (mỗi bước cắt thử lại; tối đa 500 lần cắt để tránh loop vô hạn)
+        let s = candidate;
+        for (let i = 0; i < 500 && s.length > 50; i++) {
+            s = s.slice(0, s.lastIndexOf(','));
+            if (s.length < 10) break;
+            // Thêm các dấu đóng cấu trúc phổ biến
+            const candidates = [
+                s + '}',
+                s + ']}',
+                s + '"]}',
+                s + '}]}',
+                s + '}}',
+            ];
+            for (const c of candidates) {
+                parsed = tryParse(c);
+                if (parsed && typeof parsed === 'object') return parsed;
+            }
+        }
+        return null;
+    };
+
+    // 1) Thử tìm JSON object lớn nhất trong text
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     if (start !== -1 && end !== -1 && end > start) {
         const candidate = text.slice(start, end + 1);
-        try {
-            return JSON.parse(candidate);
-        } catch (_) {
-            // continue to fallback
-        }
+        const parsed = parseWithTruncationRecovery(candidate);
+        if (parsed) return parsed;
     }
 
+    // 2) Fallback regex
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-        try {
-            return JSON.parse(jsonMatch[0]);
-        } catch (_) {
-            return null;
-        }
+        const parsed = parseWithTruncationRecovery(jsonMatch[0]);
+        if (parsed) return parsed;
     }
 
     return null;

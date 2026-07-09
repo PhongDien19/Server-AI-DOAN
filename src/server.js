@@ -117,11 +117,17 @@ app.post('/api/login', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Vui lòng nhập đủ tài khoản và mật khẩu' });
   }
 
-  const result = await checkLogin(username, password);
-  if (result.success) {
-    res.status(200).json(result);
-  } else {
-    res.status(401).json(result); // Lỗi xác thực
+  try {
+    const result = await checkLogin(username, password);
+    console.log('[Login] result:', JSON.stringify(result));
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(401).json(result); // Lỗi xác thực
+    }
+  } catch (err) {
+    console.error('[Login] Loi:', err);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi đăng nhập: ' + (err.message || 'unknown') });
   }
 });
 

@@ -7,10 +7,12 @@ const model = getGenerativeModelWithFallback({
     generationConfig: {
         temperature: 0.5,
         // gemini-2.5-flash mac dinh dung 1 phan token cho "thinking/reasoning"
-        // (thoughtsTokenCount), nen can maxOutputTokens du lon de phan JSON
-        // tra ve khong bi cat cut.
-        maxOutputTokens: 8192,
-        responseMimeType: "application/json"
+        // (thoughtsTokenCount), nen can maxOutputTokens rat lon de phan JSON
+        // tra ve khong bi cat cut. 16384 cho 15 cau hoi Likert + SCCT.
+        maxOutputTokens: 16384,
+        responseMimeType: "application/json",
+        // Chi dinh khong su dung thinking de tiet kiem token cho output
+        thinkingConfig: { thinkingBudget: 0 }
     }
 });
 
@@ -195,10 +197,18 @@ Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích n�
     let text = aiResult.response.text().trim();
 
     const generatedSurvey = extractJsonFromText(text);
-    if (!generatedSurvey) {
+    if (!generatedSurvey || !Array.isArray(generatedSurvey.questions)) {
       // In ra 500 ky tu dau cua phan hoi de biet tai sao parse loi
       console.error("[Survey] Khong the parse JSON. Phan hoi tho (500 ky tu dau):", text.slice(0, 500));
       throw new Error("Không thể trích xuất JSON hợp lệ từ phản hồi của AI.");
+    }
+
+    // Loại bỏ các câu hỏi lỗi (không có questionText hoặc options không phải mảng 5 phần tử)
+    generatedSurvey.questions = generatedSurvey.questions.filter(q =>
+      q && typeof q.questionText === 'string' && Array.isArray(q.options) && q.options.length > 0
+    );
+    if (generatedSurvey.questions.length === 0) {
+      throw new Error("AI trả về JSON không có câu hỏi hợp lệ.");
     }
 
     // Chuẩn hóa và lưu vào DB
