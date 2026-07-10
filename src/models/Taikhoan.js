@@ -24,11 +24,6 @@ const Taikhoan = sequelize.define('Taikhoan', {
     unique: true,
     field: 'Email'
   },
-  phone: {
-    type: DataTypes.STRING(11),
-    allowNull: true,
-    field: 'SoDienThoai'
-  },
   role: {
     type: DataTypes.STRING(20),
     allowNull: false,
@@ -63,15 +58,6 @@ const Taikhoan = sequelize.define('Taikhoan', {
     type: DataTypes.INTEGER,
     defaultValue: 3,
     field: 'TokenChat'
-  },
-  // Fields for codebase compatibility
-  authProvider: {
-    type: DataTypes.STRING,
-    defaultValue: 'local',
-  },
-  isEmailVerified: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
   },
   lastLoginAt: {
     type: DataTypes.DATE,

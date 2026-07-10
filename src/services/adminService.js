@@ -212,7 +212,7 @@ const getAccounts = async () => {
         tenDangNhap: emailPrefix || acc.email,
         hoTen: acc.Profile ? acc.Profile.fullName : 'Chưa cập nhật',
         email: acc.email,
-        soDienThoai: acc.Profile && acc.Profile.phone ? acc.Profile.phone : 'Chưa cập nhật',
+        soDienThoai: 'Chưa cập nhật',
         vaiTro: acc.role === 'admin' ? 'Admin' : 'User',
         trangThai: acc.isActive ? 1 : 0,
         ngayTao: acc.createdAt ? acc.createdAt.toISOString().slice(0, 16).replace('T', ' ') : 'Chưa rõ',
@@ -229,7 +229,7 @@ const getAccounts = async () => {
 
 const createAccount = async (data) => {
   try {
-    const { email, password, fullName, phone, role, tokenCount } = data;
+    const { email, password, fullName, role, tokenCount } = data;
 
     const existing = await Taikhoan.findOne({ where: { email } });
     if (existing) {
@@ -242,7 +242,6 @@ const createAccount = async (data) => {
     const newAcc = await Taikhoan.create({
       email,
       passwordHash,
-      phone: phone || '',
       role: role === 'Admin' ? 'admin' : 'user',
       isActive: true,
       tokenCount: tokenCount !== undefined ? parseInt(tokenCount, 10) : 3
@@ -279,9 +278,6 @@ const updateAccount = async (id, data) => {
     }
     if (data.email !== undefined) {
       updateFields.email = data.email;
-    }
-    if (data.soDienThoai !== undefined) {
-      updateFields.phone = data.soDienThoai;
     }
 
     await Taikhoan.update(updateFields, { where: { id } });

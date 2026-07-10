@@ -462,8 +462,6 @@ app.listen(PORT, async () => {
       const user = await Taikhoan.create({
         email,
         passwordHash,
-        authProvider: 'local',
-        isEmailVerified: true,
         role: 'user',
         tokenCount: 3
       });
