@@ -67,7 +67,7 @@ const CauHoi = sequelize.define('CauHoi', {
     type: DataTypes.INTEGER,
   }
 }, {
-  tableName: 'CauHoi',
+  tableName: 'cauhoi',
   timestamps: false,
 });
 

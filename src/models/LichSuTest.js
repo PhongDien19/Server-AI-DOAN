@@ -35,7 +35,7 @@ const LichSuTest = sequelize.define('LichSuTest', {
     field: 'createdAt'
   }
 }, {
-  tableName: 'LichSuTest',
+  tableName: 'lichsutest',
   timestamps: false,
 });
 

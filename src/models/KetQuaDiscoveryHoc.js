@@ -44,10 +44,6 @@ const KetQuaDiscoveryHoc = sequelize.define('KetQuaDiscoveryHoc', {
     type: DataTypes.STRING(500),
     allowNull: true,
   },
-  benchmark2025: {
-    type: DataTypes.DECIMAL(4, 2),
-    allowNull: true,
-  },
   sessionId: {
     type: DataTypes.STRING(255),
     allowNull: true,

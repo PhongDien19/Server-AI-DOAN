@@ -8,11 +8,6 @@ const Taikhoan = sequelize.define('Taikhoan', {
     primaryKey: true,
     field: 'MaTK'
   },
-  username: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
-    field: 'TenDangNhap'
-  },
   passwordHash: {
     type: DataTypes.STRING(100),
     allowNull: true,
@@ -88,9 +83,6 @@ const Taikhoan = sequelize.define('Taikhoan', {
 });
 
 Taikhoan.beforeCreate((taikhoan) => {
-  if (!taikhoan.username) {
-    taikhoan.username = taikhoan.email;
-  }
   if (!taikhoan.fullName) {
     taikhoan.fullName = taikhoan.email ? taikhoan.email.split('@')[0] : 'User';
   }

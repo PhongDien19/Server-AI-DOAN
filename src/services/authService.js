@@ -2,11 +2,11 @@ const bcrypt = require('bcrypt');
 const { Taikhoan: UserAccount, NguoiDung: UserProfile } = require('../models');
 
 /**
- * Hàm kiểm tra đăng nhập bằng Username / Password
+ * Hàm kiểm tra đăng nhập bằng Email / Password
  */
-const checkLogin = async (username, password) => {
+const checkLogin = async (email, password) => {
   try {
-    const user = await UserAccount.findOne({ where: { email: username } });
+    const user = await UserAccount.findOne({ where: { email: email } });
 
     if (!user) {
       return { success: false, message: 'Tài khoản không tồn tại' };

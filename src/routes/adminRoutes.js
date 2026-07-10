@@ -14,7 +14,7 @@ const checkAdminAuth = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/authMiddleware');
+    const { JWT_SECRET } = require('../middlewares/authMiddleware');
 
     const decoded = jwt.verify(token, JWT_SECRET);
 

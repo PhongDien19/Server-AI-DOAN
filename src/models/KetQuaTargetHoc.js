@@ -13,9 +13,9 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
     field: 'userId',
   },
   diem: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.DECIMAL(4, 2),
     allowNull: true,
-    defaultValue: 0,
+    defaultValue: 0.00,
   },
   careerName: {
     type: DataTypes.STRING(255),
@@ -37,10 +37,6 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
     type: DataTypes.DECIMAL(4, 2),
     allowNull: true,
   },
-  benchmark2022: {
-    type: DataTypes.DECIMAL(4, 2),
-    allowNull: true,
-  },
   scoreEvaluation: {
     type: DataTypes.TEXT,
     allowNull: true,
@@ -51,14 +47,6 @@ const KetQuaTargetHoc = sequelize.define('KetQuaTargetHoc', {
   },
   admissionLink: {
     type: DataTypes.STRING(500),
-    allowNull: true,
-  },
-  benchmark2025: {
-    type: DataTypes.DECIMAL(4, 2),
-    allowNull: true,
-  },
-  scoreEvaluation: {
-    type: DataTypes.TEXT,
     allowNull: true,
   },
   sessionId: {
