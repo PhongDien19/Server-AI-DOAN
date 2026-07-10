@@ -325,7 +325,7 @@ async function claimAssessmentResult(sessionId, userId) {
         const isHighSchool = isStudyingHighSchool(ctx.userContext?.education || profile.educationLevel);
 
         // Lấy điểm đánh giá để lưu vào cột diem
-        const diemValue = evaluation.score != null ? Math.round(evaluation.score) : null;
+        const diemValue = evaluation.score != null ? parseFloat(evaluation.score.toFixed(2)) : null;
 
         if (mode === 'Discovery') {
           if (isHighSchool) {
@@ -432,7 +432,8 @@ async function claimAssessmentResult(sessionId, userId) {
                   companyDescription: normalizeTextField(comp.companyDescription || comp.description),
                   careerLink: normalizeTextField(comp.careerLink || comp.link),
                   basicSalary: normalizeTextField(comp.basicSalary || comp.salary),
-                  laborMarket: normalizeTextField(comp.laborMarket || evaluation.laborMarket)
+                  laborMarket: normalizeTextField(comp.laborMarket || evaluation.laborMarket),
+                  careerRoadmap: normalizeTextField(comp.careerRoadmap || evaluation.careerRoadmap || comp.roadmap)
                 });
               }
             }
