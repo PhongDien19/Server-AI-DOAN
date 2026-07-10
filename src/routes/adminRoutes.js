@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
-const { verifyAdmin } = require('../middleware/authMiddleware');
+const { verifyAdmin } = require('../middlewares/authMiddleware');
 
 // Middleware xác thực quyền Admin (sử dụng JWT)
 const checkAdminAuth = async (req, res, next) => {
