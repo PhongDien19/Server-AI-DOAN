@@ -5,6 +5,10 @@ const {
   Prompt,
   SurveyFeedback,
   LichSuTest,
+  KetQuaDiscoveryHoc,
+  KetQuaDiscoveryLam,
+  KetQuaTargetHoc,
+  KetQuaTargetLam,
   sequelize
 } = require('../models');
 const { Op } = require('sequelize');
@@ -22,14 +26,20 @@ const getDashboardStats = async () => {
       col: 'sessionId'
     });
 
-    // Tính điểm tương thích trung bình từ các profile
-    const avgCompResult = await NguoiDung.findOne({
+    // Tính điểm tương thích trung bình từ các bài test đã thực hiện
+    const avgCompResult = await LichSuTest.findOne({
       attributes: [
-        [sequelize.fn('AVG', sequelize.col('careerFitScore')), 'avgComp']
-      ]
+        [sequelize.fn('AVG', sequelize.col('score')), 'avgComp']
+      ],
+      where: {
+        score: {
+          [Op.ne]: null
+        }
+      }
     });
-    const avgCompatibility = avgCompResult && avgCompResult.getDataValue('avgComp')
-      ? Math.round(parseFloat(avgCompResult.getDataValue('avgComp')))
+    const avgCompRaw = avgCompResult ? avgCompResult.getDataValue('avgComp') : null;
+    const avgCompatibility = avgCompRaw !== null
+      ? (parseFloat(avgCompRaw) > 5 ? Math.round(parseFloat(avgCompRaw)) : Math.round((parseFloat(avgCompRaw) / 5) * 100))
       : 75; // Fallback default if empty
 
     const totalCategories = 0;
@@ -73,23 +83,47 @@ const getDashboardStats = async () => {
     }
 
     // 2. Xu hướng nghề nghiệp (5 ngành nghề được chọn làm target nhiều nhất)
-    const targetJobs = await NguoiDung.findAll({
+    const targetJobsHoc = await KetQuaTargetHoc.findAll({
       attributes: [
-        'targetJob',
-        [sequelize.fn('COUNT', sequelize.col('MaND')), 'count']
+        'careerName',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
       where: {
-        targetJob: { [Op.ne]: null }
+        careerName: { [Op.ne]: null, [Op.notIn]: ['', 'null', 'undefined'] }
       },
-      group: ['targetJob'],
-      order: [[sequelize.literal('count'), 'DESC']],
-      limit: 5
+      group: ['careerName'],
+      raw: true
     });
 
-    const careerTrendData = targetJobs.map(job => ({
-      career: job.targetJob,
-      count: parseInt(job.getDataValue('count'), 10)
-    }));
+    const targetJobsLam = await KetQuaTargetLam.findAll({
+      attributes: [
+        'careerName',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: {
+        careerName: { [Op.ne]: null, [Op.notIn]: ['', 'null', 'undefined'] }
+      },
+      group: ['careerName'],
+      raw: true
+    });
+
+    // Merge counts in JavaScript
+    const careerCounts = {};
+    for (const item of targetJobsHoc) {
+      const name = item.careerName.trim();
+      const cnt = parseInt(item.count || 0, 10);
+      careerCounts[name] = (careerCounts[name] || 0) + cnt;
+    }
+    for (const item of targetJobsLam) {
+      const name = item.careerName.trim();
+      const cnt = parseInt(item.count || 0, 10);
+      careerCounts[name] = (careerCounts[name] || 0) + cnt;
+    }
+
+    const careerTrendData = Object.entries(careerCounts)
+      .map(([career, count]) => ({ career, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
 
     if (careerTrendData.length === 0) {
       careerTrendData.push(
@@ -318,38 +352,182 @@ const deleteAccount = async (id) => {
 };
 
 /**
- * --- QUẢN LÝ CAREERS (Ngành nghề) ---
+ * --- QUẢN LÝ CAREERS (Ngành nghề) - Từ bảng discovery_lam ---
  */
 const getCareers = async () => {
-  return { success: true, careers: [] };
+  try {
+    // Lấy danh sách nghề nghiệp từ bảng discovery_lam (loại bỏ trùng lặp)
+    const careers = await KetQuaDiscoveryLam.findAll({
+      attributes: [
+        [sequelize.fn('DISTINCT', sequelize.col('careerName')), 'careerName']
+      ],
+      where: {
+        careerName: { [Op.ne]: null, [Op.notIn]: ['', 'null', 'undefined'] }
+      },
+      raw: true
+    });
+
+    const mappedCareers = careers.map((c, index) => ({
+      id: (index + 1).toString(),
+      tenNganh: c.careerName,
+      moTa: c.jobDescription || '',
+      luong: c.basicSalary || 'Thỏa thuận',
+      viTri: 'Đang tuyển dụng',
+      xuHuong: 'Xu hướng tốt'
+    }));
+
+    return { success: true, careers: mappedCareers };
+  } catch (error) {
+    console.error('Lỗi getCareers:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const createCareer = async (data) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    // Lưu vào bảng discovery_lam làm nguồn dữ liệu
+    await KetQuaDiscoveryLam.create({
+      careerName: data.tenNganh || data.name,
+      jobDescription: data.moTa || data.description || '',
+      basicSalary: data.luong || data.salary || '',
+      roles: data.viTri || 'Nhân viên',
+      sessionId: `admin_${Date.now()}`
+    });
+    return { success: true, message: 'Tạo ngành nghề thành công' };
+  } catch (error) {
+    console.error('Lỗi createCareer:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const updateCareer = async (id, data) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    const career = await KetQuaDiscoveryLam.findByPk(id);
+    if (!career) {
+      return { success: false, message: 'Ngành nghề không tồn tại' };
+    }
+    const updateFields = {};
+    if (data.tenNganh !== undefined || data.name !== undefined) {
+      updateFields.careerName = data.tenNganh || data.name;
+    }
+    if (data.moTa !== undefined || data.description !== undefined) {
+      updateFields.jobDescription = data.moTa || data.description;
+    }
+    if (data.luong !== undefined || data.salary !== undefined) {
+      updateFields.basicSalary = data.luong || data.salary;
+    }
+    await KetQuaDiscoveryLam.update(updateFields, { where: { id } });
+    return { success: true, message: 'Cập nhật ngành nghề thành công' };
+  } catch (error) {
+    console.error('Lỗi updateCareer:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const deleteCareer = async (id) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    const career = await KetQuaDiscoveryLam.findByPk(id);
+    if (!career) {
+      return { success: false, message: 'Ngành nghề không tồn tại' };
+    }
+    await KetQuaDiscoveryLam.destroy({ where: { id } });
+    return { success: true, message: 'Xóa ngành nghề thành công' };
+  } catch (error) {
+    console.error('Lỗi deleteCareer:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
+/**
+ * --- QUẢN LÝ CATEGORIES (Danh mục ngành học) - Từ bảng discovery_hoc ---
+ */
 const getCategories = async () => {
-  return { success: true, categories: [] };
+  try {
+    // Lấy danh sách ngành học từ bảng discovery_hoc (loại bỏ trùng lặp)
+    const categories = await KetQuaDiscoveryHoc.findAll({
+      attributes: [
+        [sequelize.fn('DISTINCT', sequelize.col('careerName')), 'careerName']
+      ],
+      where: {
+        careerName: { [Op.ne]: null, [Op.notIn]: ['', 'null', 'undefined'] }
+      },
+      raw: true
+    });
+
+    const mappedCategories = categories.map((c, index) => ({
+      id: (index + 1).toString(),
+      tenNganh: c.careerName,
+      truong: c.schoolName || '',
+      diemChuan: c.benchmark2025 || c.benchmark2024 || 'Xem chi tiết',
+      nam: '2025',
+      xuHuong: 'Hot'
+    }));
+
+    return { success: true, categories: mappedCategories };
+  } catch (error) {
+    console.error('Lỗi getCategories:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const createCategory = async (data) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    // Lưu vào bảng discovery_hoc làm nguồn dữ liệu
+    await KetQuaDiscoveryHoc.create({
+      careerName: data.tenNganh || data.name,
+      schoolName: data.truong || data.school || '',
+      benchmark2025: data.diemChuan || data.score || null,
+      officialLink: data.link || '',
+      admissionLink: data.link || '',
+      sessionId: `admin_${Date.now()}`
+    });
+    return { success: true, message: 'Tạo danh mục ngành học thành công' };
+  } catch (error) {
+    console.error('Lỗi createCategory:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const updateCategory = async (id, data) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    const category = await KetQuaDiscoveryHoc.findByPk(id);
+    if (!category) {
+      return { success: false, message: 'Danh mục ngành học không tồn tại' };
+    }
+    const updateFields = {};
+    if (data.tenNganh !== undefined || data.name !== undefined) {
+      updateFields.careerName = data.tenNganh || data.name;
+    }
+    if (data.truong !== undefined || data.school !== undefined) {
+      updateFields.schoolName = data.truong || data.school;
+    }
+    if (data.diemChuan !== undefined || data.score !== undefined) {
+      updateFields.benchmark2025 = data.diemChuan || data.score;
+    }
+    if (data.link !== undefined) {
+      updateFields.officialLink = data.link;
+      updateFields.admissionLink = data.link;
+    }
+    await KetQuaDiscoveryHoc.update(updateFields, { where: { id } });
+    return { success: true, message: 'Cập nhật danh mục ngành học thành công' };
+  } catch (error) {
+    console.error('Lỗi updateCategory:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const deleteCategory = async (id) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    const category = await KetQuaDiscoveryHoc.findByPk(id);
+    if (!category) {
+      return { success: false, message: 'Danh mục ngành học không tồn tại' };
+    }
+    await KetQuaDiscoveryHoc.destroy({ where: { id } });
+    return { success: true, message: 'Xóa danh mục ngành học thành công' };
+  } catch (error) {
+    console.error('Lỗi deleteCategory:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const getMarketData = async () => {

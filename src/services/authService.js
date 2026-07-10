@@ -161,6 +161,7 @@ const register = async (email, password, fullName) => {
     const newUser = await UserAccount.create({
       email,
       passwordHash,
+      fullName: fullName || '',
       // authProvider: 'local',
       // isEmailVerified: false,
     });
