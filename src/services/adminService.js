@@ -604,19 +604,237 @@ const deleteCategory = async (id) => {
 };
 
 const getMarketData = async () => {
-  return { success: true, data: [] };
+  try {
+    const targets = await KetQuaTargetLam.findAll({
+      order: [['id', 'DESC']],
+      raw: true
+    });
+
+    const careers = await KetQuaDiscoveryLam.findAll({
+      raw: true
+    });
+
+    // Build map from careerName -> id
+    const careerMap = {};
+    careers.forEach(c => {
+      careerMap[c.careerName.toLowerCase().trim()] = c.id.toString();
+    });
+
+    const data = [];
+    targets.forEach((t) => {
+      const matchedCareerId = careerMap[t.careerName.toLowerCase().trim()] || t.id.toString();
+      
+      const formattedCareer = t.careerName.charAt(0).toUpperCase() + t.careerName.slice(1);
+      const formattedTitle = t.companyName ? `${formattedCareer} (${t.companyName})` : formattedCareer;
+
+      // If basicSalary exists, add Luong item
+      if (t.basicSalary && t.basicSalary.trim() !== '') {
+        data.push({
+          maDL: `${t.id}_luong`,
+          maNghe: matchedCareerId,
+          loai: 'Luong',
+          tieuDe: formattedTitle,
+          giaTri: t.basicSalary,
+          metaData: JSON.stringify({
+            companyName: t.companyName,
+            companyDescription: t.companyDescription || '',
+            careerLink: t.careerLink || '',
+            diem: t.diem || '0.00',
+            laborMarket: t.laborMarket || '',
+            careerRoadmap: t.careerRoadmap || ''
+          }),
+          ngayCapNhat: new Date().toISOString().slice(0, 10)
+        });
+      }
+
+      // If laborMarket exists, add CoHoi item
+      if (t.laborMarket && t.laborMarket.trim() !== '') {
+        data.push({
+          maDL: `${t.id}_cohoi`,
+          maNghe: matchedCareerId,
+          loai: 'CoHoi',
+          tieuDe: formattedTitle,
+          giaTri: t.laborMarket,
+          metaData: JSON.stringify({
+            companyName: t.companyName,
+            companyDescription: t.companyDescription || '',
+            careerLink: t.careerLink || '',
+            diem: t.diem || '0.00',
+            basicSalary: t.basicSalary || '',
+            careerRoadmap: t.careerRoadmap || ''
+          }),
+          ngayCapNhat: new Date().toISOString().slice(0, 10)
+        });
+      }
+    });
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('Lỗi getMarketData:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const createMarketData = async (data) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    const { maNghe, loai, tieuDe, giaTri, metaData } = data;
+    
+    // Tìm tên nghề dựa trên maNghe (ID)
+    let careerName = '';
+    const career = await KetQuaDiscoveryLam.findByPk(maNghe);
+    if (career) {
+      careerName = career.careerName;
+    } else {
+      careerName = maNghe;
+    }
+
+    let companyName = 'Công ty';
+    let companyDescription = '';
+    let diem = 4.0;
+    let careerLink = '';
+    let laborMarketVal = '';
+    let basicSalaryVal = '';
+    let careerRoadmap = '';
+    
+    if (metaData) {
+      try {
+        const meta = typeof metaData === 'string' ? JSON.parse(metaData) : metaData;
+        if (meta.companyName) companyName = meta.companyName;
+        if (meta.companyDescription) companyDescription = meta.companyDescription;
+        if (meta.diem) diem = parseFloat(meta.diem);
+        if (meta.careerLink) careerLink = meta.careerLink;
+        if (meta.laborMarket) laborMarketVal = meta.laborMarket;
+        if (meta.basicSalary) basicSalaryVal = meta.basicSalary;
+        if (meta.careerRoadmap) careerRoadmap = meta.careerRoadmap;
+      } catch (e) {}
+    }
+
+    // Try parsing company name from tieuDe if it contains parentheses
+    const match = tieuDe.match(/\(([^)]+)\)/);
+    if (match) {
+      companyName = match[1];
+    } else if (tieuDe && !metaData) {
+      companyName = tieuDe;
+    }
+
+    if (loai === 'Luong') {
+      basicSalaryVal = giaTri;
+    } else if (loai === 'CoHoi') {
+      laborMarketVal = giaTri;
+    }
+
+    const firstTest = await LichSuTest.findOne({ order: [['id', 'ASC']] });
+    const defaultSessionId = firstTest ? firstTest.sessionId : `admin_${Date.now()}`;
+    const defaultUserId = firstTest ? firstTest.userId : null;
+
+    const newRecord = await KetQuaTargetLam.create({
+      careerName,
+      companyName,
+      companyDescription,
+      careerLink,
+      basicSalary: basicSalaryVal || null,
+      laborMarket: laborMarketVal || null,
+      careerRoadmap,
+      diem,
+      sessionId: defaultSessionId,
+      userId: defaultUserId
+    });
+
+    return { success: true, message: 'Tạo dữ liệu thị trường thành công', data: newRecord };
+  } catch (error) {
+    console.error('Lỗi createMarketData:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const updateMarketData = async (id, data) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    const parts = id.split('_');
+    const dbId = parseInt(parts[0], 10);
+    const typeSuffix = parts[1]; // 'luong' or 'cohoi'
+
+    const record = await KetQuaTargetLam.findByPk(dbId);
+    if (!record) {
+      return { success: false, message: 'Dữ liệu thị trường không tồn tại' };
+    }
+
+    const { maNghe, loai, tieuDe, giaTri, metaData } = data;
+    const updateFields = {};
+
+    if (maNghe !== undefined) {
+      const career = await KetQuaDiscoveryLam.findByPk(maNghe);
+      if (career) {
+        updateFields.careerName = career.careerName;
+      } else {
+        updateFields.careerName = maNghe;
+      }
+    }
+
+    if (giaTri !== undefined) {
+      if (typeSuffix === 'luong') {
+        updateFields.basicSalary = giaTri;
+      } else if (typeSuffix === 'cohoi') {
+        updateFields.laborMarket = giaTri;
+      }
+    }
+
+    if (metaData !== undefined) {
+      try {
+        const meta = typeof metaData === 'string' ? JSON.parse(metaData) : metaData;
+        if (meta.companyName) updateFields.companyName = meta.companyName;
+        if (meta.companyDescription) updateFields.companyDescription = meta.companyDescription;
+        if (meta.diem) updateFields.diem = parseFloat(meta.diem);
+        if (meta.careerLink) updateFields.careerLink = meta.careerLink;
+        if (meta.laborMarket && typeSuffix !== 'cohoi') updateFields.laborMarket = meta.laborMarket;
+        if (meta.basicSalary && typeSuffix !== 'luong') updateFields.basicSalary = meta.basicSalary;
+        if (meta.careerRoadmap) updateFields.careerRoadmap = meta.careerRoadmap;
+      } catch (e) {}
+    }
+
+    if (tieuDe !== undefined) {
+      const match = tieuDe.match(/\(([^)]+)\)/);
+      if (match) {
+        updateFields.companyName = match[1];
+      }
+    }
+
+    await KetQuaTargetLam.update(updateFields, { where: { id: dbId } });
+    return { success: true, message: 'Cập nhật dữ liệu thị trường thành công' };
+  } catch (error) {
+    console.error('Lỗi updateMarketData:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 const deleteMarketData = async (id) => {
-  return { success: true, message: 'Tính năng đã tạm tắt để nâng cấp' };
+  try {
+    const parts = id.split('_');
+    const dbId = parseInt(parts[0], 10);
+    const typeSuffix = parts[1]; // 'luong' or 'cohoi'
+
+    const record = await KetQuaTargetLam.findByPk(dbId);
+    if (!record) {
+      return { success: false, message: 'Dữ liệu thị trường không tồn tại' };
+    }
+
+    if (typeSuffix === 'luong') {
+      record.basicSalary = null;
+    } else if (typeSuffix === 'cohoi') {
+      record.laborMarket = null;
+    }
+
+    if ((!record.basicSalary || record.basicSalary.trim() === '') && 
+        (!record.laborMarket || record.laborMarket.trim() === '')) {
+      await KetQuaTargetLam.destroy({ where: { id: dbId } });
+    } else {
+      await record.save();
+    }
+
+    return { success: true, message: 'Xóa dữ liệu thị trường thành công' };
+  } catch (error) {
+    console.error('Lỗi deleteMarketData:', error);
+    return { success: false, message: 'Lỗi hệ thống' };
+  }
 };
 
 /**
