@@ -356,25 +356,98 @@ const deleteAccount = async (id) => {
  */
 const getCareers = async () => {
   try {
-    // Lấy danh sách nghề nghiệp từ bảng discovery_lam (loại bỏ trùng lặp)
+    // Lấy sessionId và userId hợp lệ từ lichsutest để thỏa mãn khóa ngoại của discovery_lam
+    const firstTest = await LichSuTest.findOne({ order: [['id', 'ASC']] });
+    const defaultSessionId = firstTest ? firstTest.sessionId : null;
+    const defaultUserId = firstTest ? firstTest.userId : null;
+
+    // Tự động thêm dữ liệu mẫu nếu bảng discovery_lam trống
+    const count = await KetQuaDiscoveryLam.count();
+    if (count === 0) {
+      await KetQuaDiscoveryLam.bulkCreate([
+        {
+          careerName: 'Kỹ sư phần mềm',
+          jobDescription: 'Thiết kế, xây dựng và bảo trì các ứng dụng phần mềm và hệ thống thông tin.',
+          roles: 'Lập trình viên, Kiến trúc sư phần mềm, Chuyên viên kiểm thử',
+          outlook: 'Nhu cầu tuyển dụng cực kỳ cao trong kỷ nguyên chuyển đổi số và AI.',
+          requiredSkills: 'JavaScript, Python, Java, SQL, Tư duy logic, Git',
+          companyName: 'FPT Software',
+          companyDescription: 'Công ty xuất khẩu phần mềm và dịch vụ CNTT hàng đầu Việt Nam.',
+          basicSalary: '15,000,000 - 45,000,000 VND',
+          sessionId: defaultSessionId,
+          userId: defaultUserId
+        },
+        {
+          careerName: 'Quản lý và Tổ chức sự kiện',
+          jobDescription: 'Lên kế hoạch, thiết kế kịch bản, đàm phán nhà cung cấp và điều phối chạy chương trình sự kiện.',
+          roles: 'Chuyên viên tổ chức sự kiện, Quản lý dự án truyền thông',
+          outlook: 'Triển vọng phát triển tốt nhờ hoạt động marketing và giải trí tăng trưởng mạnh mẽ.',
+          requiredSkills: 'Kỹ năng giao tiếp, Làm việc nhóm, Đàm phán, Quản trị thời gian',
+          companyName: 'Đại Việt Media',
+          companyDescription: 'Tập đoàn tổ chức sự kiện chuyên nghiệp và agency quảng cáo.',
+          basicSalary: '12,000,000 - 25,000,000 VND',
+          sessionId: defaultSessionId,
+          userId: defaultUserId
+        },
+        {
+          careerName: 'Kỹ thuật Ô tô',
+          jobDescription: 'Bảo dưỡng, sửa chữa, chẩn đoán lỗi cơ khí, hệ thống điện tử và chế tạo bộ phận ô tô.',
+          roles: 'Kỹ thuật viên ô tô, Kỹ sư cơ khí động lực, Cố vấn dịch vụ',
+          outlook: 'Nhu cầu việc làm ổn định và phát triển vượt trội với sự phát triển xe điện và VinFast.',
+          requiredSkills: 'Điện tử ô tô, Sửa chữa cơ khí động cơ, Đọc sơ đồ mạch điện',
+          companyName: 'VinFast',
+          companyDescription: 'Nhà sản xuất ô tô và xe máy điện thông minh tiên phong tại Việt Nam.',
+          basicSalary: '12,000,000 - 32,000,000 VND',
+          sessionId: defaultSessionId,
+          userId: defaultUserId
+        },
+        {
+          careerName: 'Cầu thủ bóng đá',
+          jobDescription: 'Luyện tập thể lực, kỹ thuật cá nhân và thi đấu bóng đá chuyên nghiệp ở các giải quốc nội và quốc tế.',
+          roles: 'Cầu thủ chuyên nghiệp, Huấn luyện viên bóng đá trẻ',
+          outlook: 'Thu nhập hấp dẫn đi kèm với sự phát triển của bóng đá nước nhà, cạnh tranh khốc liệt.',
+          requiredSkills: 'Thể lực xuất sắc, Kỹ thuật chơi bóng, Tư duy chiến thuật đồng đội, Kỷ luật thép',
+          companyName: 'CLB Bóng đá Viettel (Thể Công)',
+          companyDescription: 'Một trong những câu lạc bộ bóng đá chuyên nghiệp có bề dày lịch sử lớn nhất Việt Nam.',
+          basicSalary: '20,000,000 - 90,000,000 VND',
+          sessionId: defaultSessionId,
+          userId: defaultUserId
+        }
+      ]);
+    }
+
     const careers = await KetQuaDiscoveryLam.findAll({
-      attributes: [
-        [sequelize.fn('DISTINCT', sequelize.col('careerName')), 'careerName']
-      ],
+      order: [['id', 'ASC']],
+      raw: true
+    });
+
+    const categories = await KetQuaDiscoveryHoc.findAll({
       where: {
         careerName: { [Op.ne]: null, [Op.notIn]: ['', 'null', 'undefined'] }
       },
       raw: true
     });
 
-    const mappedCareers = careers.map((c, index) => ({
-      id: (index + 1).toString(),
-      tenNganh: c.careerName,
-      moTa: c.jobDescription || '',
-      luong: c.basicSalary || 'Thỏa thuận',
-      viTri: 'Đang tuyển dụng',
-      xuHuong: 'Xu hướng tốt'
-    }));
+    const mappedCareers = careers.map((c) => {
+      const matchedCat = categories.find(
+        (cat) => cat.careerName.toLowerCase() === c.careerName.toLowerCase()
+      );
+      const categoryId = matchedCat
+        ? matchedCat.id.toString()
+        : categories[0]
+        ? categories[0].id.toString()
+        : '1';
+
+      return {
+        id: c.id.toString(),
+        tenNghe: c.careerName,
+        categoryId: categoryId,
+        moTa: c.jobDescription || `Mô tả công việc và triển vọng ngành ${c.careerName}`,
+        kyNangCanThiet: c.requiredSkills || 'Kỹ năng chuyên môn, Giao tiếp, Giải quyết vấn đề',
+        trangThai: 1,
+        ngayTao: new Date().toISOString()
+      };
+    });
 
     return { success: true, careers: mappedCareers };
   } catch (error) {
@@ -385,13 +458,16 @@ const getCareers = async () => {
 
 const createCareer = async (data) => {
   try {
-    // Lưu vào bảng discovery_lam làm nguồn dữ liệu
+    const firstTest = await LichSuTest.findOne({ order: [['id', 'ASC']] });
+    const defaultSessionId = firstTest ? firstTest.sessionId : null;
+    const defaultUserId = firstTest ? firstTest.userId : null;
+
     await KetQuaDiscoveryLam.create({
-      careerName: data.tenNganh || data.name,
+      careerName: data.tenNghe || data.name,
       jobDescription: data.moTa || data.description || '',
-      basicSalary: data.luong || data.salary || '',
-      roles: data.viTri || 'Nhân viên',
-      sessionId: `admin_${Date.now()}`
+      requiredSkills: data.kyNangCanThiet || '',
+      sessionId: defaultSessionId,
+      userId: defaultUserId
     });
     return { success: true, message: 'Tạo ngành nghề thành công' };
   } catch (error) {
@@ -407,14 +483,14 @@ const updateCareer = async (id, data) => {
       return { success: false, message: 'Ngành nghề không tồn tại' };
     }
     const updateFields = {};
-    if (data.tenNganh !== undefined || data.name !== undefined) {
-      updateFields.careerName = data.tenNganh || data.name;
+    if (data.tenNghe !== undefined || data.name !== undefined) {
+      updateFields.careerName = data.tenNghe || data.name;
     }
     if (data.moTa !== undefined || data.description !== undefined) {
       updateFields.jobDescription = data.moTa || data.description;
     }
-    if (data.luong !== undefined || data.salary !== undefined) {
-      updateFields.basicSalary = data.luong || data.salary;
+    if (data.kyNangCanThiet !== undefined) {
+      updateFields.requiredSkills = data.kyNangCanThiet;
     }
     await KetQuaDiscoveryLam.update(updateFields, { where: { id } });
     return { success: true, message: 'Cập nhật ngành nghề thành công' };
@@ -443,22 +519,20 @@ const deleteCareer = async (id) => {
  */
 const getCategories = async () => {
   try {
-    // Lấy danh sách ngành học từ bảng discovery_hoc (loại bỏ trùng lặp)
     const categories = await KetQuaDiscoveryHoc.findAll({
-      attributes: [
-        [sequelize.fn('DISTINCT', sequelize.col('careerName')), 'careerName']
-      ],
       where: {
         careerName: { [Op.ne]: null, [Op.notIn]: ['', 'null', 'undefined'] }
       },
+      order: [['id', 'ASC']],
       raw: true
     });
 
-    const mappedCategories = categories.map((c, index) => ({
-      id: (index + 1).toString(),
+    const mappedCategories = categories.map((c) => ({
+      id: c.id.toString(),
       tenNganh: c.careerName,
       truong: c.schoolName || '',
       diemChuan: c.benchmark2025 || c.benchmark2024 || 'Xem chi tiết',
+      link: c.officialLink || c.admissionLink || '',
       nam: '2025',
       xuHuong: 'Hot'
     }));
@@ -472,7 +546,6 @@ const getCategories = async () => {
 
 const createCategory = async (data) => {
   try {
-    // Lưu vào bảng discovery_hoc làm nguồn dữ liệu
     await KetQuaDiscoveryHoc.create({
       careerName: data.tenNganh || data.name,
       schoolName: data.truong || data.school || '',
@@ -502,7 +575,7 @@ const updateCategory = async (id, data) => {
       updateFields.schoolName = data.truong || data.school;
     }
     if (data.diemChuan !== undefined || data.score !== undefined) {
-      updateFields.benchmark2025 = data.diemChuan || data.score;
+      updateFields.benchmark2025 = data.diemChuan || data.score || null;
     }
     if (data.link !== undefined) {
       updateFields.officialLink = data.link;
