@@ -28,6 +28,7 @@ const checkLogin = async (email, password) => {
             await UserAccount.update(
               { 
                 tokenCount: 3,
+                tokenTest: 3,
                 lastLoginAt: new Date() 
               },
               { where: { id: user.id } }

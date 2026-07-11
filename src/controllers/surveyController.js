@@ -12,6 +12,24 @@ const initSurvey = async (req, res) => {
             return res.status(400).json({ success: false, message: 'target_career là bắt buộc khi mode = Targeted' });
         }
 
+        // Kiểm tra và trừ token test nếu đã đăng nhập
+        const userId = req.headers['x-user-id'] || req.body.userId;
+        if (userId) {
+            const { Taikhoan: UserAccount } = require('../models');
+            const user = await UserAccount.findByPk(userId);
+            if (user) {
+                if (user.tokenTest <= 0) {
+                    return res.status(403).json({
+                        success: false,
+                        tokenLimit: true,
+                        message: 'Hết lượt làm bài test. Vui lòng nâng cấp hoặc mua thêm lượt.'
+                    });
+                }
+                user.tokenTest -= 1;
+                await user.save();
+            }
+        }
+
         const result = await surveyService.initSurvey(mode, target_career, { age, education, location, hobby, academicData });
         res.status(200).json({ success: true, ...result });
     } catch (error) {

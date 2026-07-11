@@ -86,6 +86,24 @@ app.post('/api/consult', async (req, res) => {
 // 2. Endpoint tạo bài test chi tiết (POST)
 app.post('/api/generate-test', async (req, res) => {
   try {
+    // Kiểm tra và trừ token test nếu đã đăng nhập
+    const userId = req.headers['x-user-id'] || req.body.userId;
+    if (userId) {
+      const { Taikhoan: UserAccount } = require('./models');
+      const user = await UserAccount.findByPk(userId);
+      if (user) {
+        if (user.tokenTest <= 0) {
+          return res.status(403).json({
+            success: false,
+            tokenLimit: true,
+            message: 'Hết lượt làm bài test. Vui lòng nâng cấp hoặc mua thêm lượt.'
+          });
+        }
+        user.tokenTest -= 1;
+        await user.save();
+      }
+    }
+
     const test = await generateCareerTest(req.body);
     res.json({ success: true, test });
   } catch (error) {
@@ -317,6 +335,25 @@ app.delete('/api/profile/:userId/scores', async (req, res) => {
 app.post('/api/test/generate', async (req, res) => {
   try {
     const { testType, targetJob, hobby, age, educationLevel } = req.body;
+    
+    // Kiểm tra và trừ token test nếu đã đăng nhập
+    const userId = req.headers['x-user-id'] || req.body.userId;
+    if (userId) {
+      const { Taikhoan: UserAccount } = require('./models');
+      const user = await UserAccount.findByPk(userId);
+      if (user) {
+        if (user.tokenTest <= 0) {
+          return res.status(403).json({
+            success: false,
+            tokenLimit: true,
+            message: 'Hết lượt làm bài test. Vui lòng nâng cấp hoặc mua thêm lượt.'
+          });
+        }
+        user.tokenTest -= 1;
+        await user.save();
+      }
+    }
+
     let test;
     if (testType === 'holland') {
       test = await generateHollandTest(req.body);
