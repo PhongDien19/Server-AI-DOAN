@@ -849,10 +849,10 @@ const getPrompts = async () => {
     const mapped = prompts.map(pr => ({
       id: pr.MaID.toString(),
       code: pr.MaPrompt ? pr.MaPrompt.toString() : `PMT_${pr.MaID}`,
-      title: pr.MoTa || 'Prompt vô đề',
-      description: pr.MoTa || '',
+      title: pr.MoTa || 'Prompt không có tiêu đề',
+      description: pr.MoTaPhu || '',
       content: pr.NoiDung || '',
-      version: pr.PhienBan ? pr.PhienBan.toString() : '1.0.0',
+      version: pr.PhienBan ? pr.PhienBan.toString() : '1',
       inputVariables: pr.BienDauVao ? (typeof pr.BienDauVao === 'object' ? JSON.stringify(pr.BienDauVao) : pr.BienDauVao) : '{}',
       status: pr.TrangThaiHD ? 'active' : 'inactive',
       createdAt: pr.createdAt ? pr.createdAt.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
@@ -869,6 +869,17 @@ const createPrompt = async (data) => {
   try {
     const { code, title, content, description, version, inputVariables, status } = data;
 
+    // Validation
+    if (!code || code.trim() === '') {
+      return { success: false, message: 'Mã Prompt không được để trống' };
+    }
+    if (!title || title.trim() === '') {
+      return { success: false, message: 'Tiêu đề Prompt không được để trống' };
+    }
+    if (!content || content.trim() === '') {
+      return { success: false, message: 'Nội dung Prompt không được để trống' };
+    }
+
     let variables = {};
     if (inputVariables) {
       try {
@@ -878,22 +889,23 @@ const createPrompt = async (data) => {
       }
     }
 
-    // Convert code string to integer representation if needed, or generate random id
-    const promptCode = parseInt(code.replace(/[^0-9]/g, ''), 10) || Math.floor(Math.random() * 1000);
+    // Parse version to integer
+    const parsedVersion = parseInt(version, 10) || 1;
 
     await Prompt.create({
-      MaPrompt: promptCode,
-      MoTa: description || title || '',
-      NoiDung: content || '',
+      MaPrompt: code.trim(), // Keep as string
+      MoTa: title.trim(),
+      MoTaPhu: description ? description.trim() : null,
+      NoiDung: content,
       BienDauVao: variables,
       TrangThaiHD: status === 'active',
-      PhienBan: parseInt(version, 10) || 1
+      PhienBan: parsedVersion
     });
 
     return { success: true, message: 'Tạo Prompt thành công' };
   } catch (error) {
     console.error('Lỗi createPrompt:', error);
-    return { success: false, message: 'Lỗi hệ thống' };
+    return { success: false, message: 'Lỗi hệ thống: ' + error.message };
   }
 };
 
@@ -904,9 +916,18 @@ const updatePrompt = async (id, data) => {
       return { success: false, message: 'Prompt không tồn tại' };
     }
 
+    // Validation
+    if (data.title !== undefined && data.title.trim() === '') {
+      return { success: false, message: 'Tiêu đề Prompt không được để trống' };
+    }
+    if (data.content !== undefined && data.content.trim() === '') {
+      return { success: false, message: 'Nội dung Prompt không được để trống' };
+    }
+
     const updateFields = {};
     if (data.description !== undefined || data.title !== undefined) {
-      updateFields.MoTa = data.description || data.title;
+      updateFields.MoTa = (data.title || pr.MoTa || '').trim();
+      updateFields.MoTaPhu = data.description ? data.description.trim() : null;
     }
     if (data.content !== undefined) {
       updateFields.NoiDung = data.content;
@@ -918,7 +939,7 @@ const updatePrompt = async (id, data) => {
       updateFields.TrangThaiHD = data.status === 'active';
     }
     if (data.code !== undefined) {
-      updateFields.MaPrompt = parseInt(data.code.replace(/[^0-9]/g, ''), 10) || pr.MaPrompt;
+      updateFields.MaPrompt = data.code.trim();
     }
     if (data.inputVariables !== undefined) {
       let variables = {};
@@ -934,7 +955,7 @@ const updatePrompt = async (id, data) => {
     return { success: true, message: 'Cập nhật Prompt thành công' };
   } catch (error) {
     console.error('Lỗi updatePrompt:', error);
-    return { success: false, message: 'Lỗi hệ thống' };
+    return { success: false, message: 'Lỗi hệ thống: ' + error.message };
   }
 };
 

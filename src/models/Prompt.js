@@ -8,12 +8,17 @@ const Prompt = sequelize.define('Prompt', {
     primaryKey: true,
   },
   MaPrompt: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING(50),
     allowNull: false,
   },
   MoTa: {
     type: DataTypes.STRING(255),
     allowNull: true,
+  },
+  MoTaPhu: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'MoTaPhu'
   },
   NoiDung: {
     type: DataTypes.TEXT,
