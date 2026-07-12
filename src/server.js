@@ -479,7 +479,7 @@ app.get('/', (req, res) => {
 });
 
 // Khởi động server (Tự động đồng bộ và tạo bảng nếu chưa có)
-app.listen(PORT, async () => {
+app.listen(PORT, '0.0.0.0', async () => {
   try {
     await sequelize.authenticate();
     console.log("Đã kết nối MySQL thành công!");
