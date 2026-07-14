@@ -9,6 +9,19 @@ const model = getGenerativeModelWithFallback({
     tools: [{ googleSearch: {} }]
 });
 
+const groundedModel = getGenerativeModelWithFallback({
+    model: "gemini-2.5-flash",
+    generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 8192
+    },
+    tools: [
+        {
+            googleSearch: {}
+        }
+    ]
+});
+
 // Simple cache để tránh gọi API trùng lặp
 const responseCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 phút
@@ -266,7 +279,7 @@ Chỉ trả về JSON.`;
 
         try {
             const result = await Promise.race([
-                model.generateContent(prompt),
+                groundedModel.generateContent(prompt),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('AI request timeout')), API_TIMEOUT)
                 )
@@ -316,7 +329,7 @@ Chỉ trả về JSON.`;
 
         try {
             const result = await Promise.race([
-                model.generateContent(prompt),
+                groundedModel.generateContent(prompt),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('AI request timeout')), API_TIMEOUT)
                 )
