@@ -283,8 +283,25 @@ const processSurveySubmit = async (sessionId, answers) => {
       const q = questions[i];
       const answerWeight = answers[i] || 3; // default neutral if missing
 
+      // Tìm text của option có weight tương ứng
+      let selectedText = String(answerWeight);
+      if (q.options) {
+        let opts = [];
+        if (typeof q.options === 'string') {
+          try { opts = JSON.parse(q.options); } catch (e) {}
+        } else if (Array.isArray(q.options)) {
+          opts = q.options;
+        }
+        if (Array.isArray(opts)) {
+          const found = opts.find(o => o && o.weight === answerWeight);
+          if (found && found.text) {
+            selectedText = found.text;
+          }
+        }
+      }
+
       // update userAnswer vào DB
-      q.userAnswer = String(answerWeight);
+      q.userAnswer = selectedText;
       await q.save();
 
       parsedAnswers.push({ question: q.questionText, weight: answerWeight });

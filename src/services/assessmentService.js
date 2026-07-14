@@ -89,6 +89,19 @@ async function claimAssessmentResult(sessionId, userId) {
       const testType = existingQ.testType;
       let evalResult = null;
       const isHighSchool = isStudyingHighSchool(profile.educationLevel);
+      // Load dbHistory
+      const dbHistory = await LichSuTest.findOne({ where: { sessionId, userId: uid } });
+      const historySummary = dbHistory ? dbHistory.summary : '';
+      let historyStrengths = [];
+      try {
+        historyStrengths = dbHistory && dbHistory.strengths ? JSON.parse(dbHistory.strengths) : [];
+      } catch (e) {}
+      let historyWeaknesses = [];
+      try {
+        historyWeaknesses = dbHistory && dbHistory.weaknesses ? JSON.parse(dbHistory.weaknesses) : [];
+      } catch (e) {}
+      const historyAdvice = dbHistory ? dbHistory.advice : '';
+
       if (testType === 'career') {
         const testName = existingQ.testName || '';
         const isTarget = testName.toLowerCase().includes('khảo sát nghề') || testName.toLowerCase().includes('mục tiêu') || testName.toLowerCase().includes('targeted');
@@ -96,6 +109,12 @@ async function claimAssessmentResult(sessionId, userId) {
           if (isHighSchool) {
             const schools = await KetQuaTargetHoc.findAll({ where: { userId: uid, sessionId } });
             evalResult = {
+              score: dbHistory ? dbHistory.score : null,
+              status: dbHistory && dbHistory.score > 3.0 ? 'Passed' : 'Failed',
+              summary: historySummary,
+              strengths: historyStrengths,
+              weaknesses: historyWeaknesses,
+              advice: historyAdvice,
               trainingInstitutions: schools.map(s => s.toJSON()),
               roadmap: [
                 "Giai đoạn 1: Nắm bắt kiến thức cơ bản và kỹ năng tự học nền tảng",
@@ -107,6 +126,12 @@ async function claimAssessmentResult(sessionId, userId) {
             const companies = await KetQuaTargetLam.findAll({ where: { userId: uid, sessionId } });
             const first = companies[0] || {};
             evalResult = {
+              score: dbHistory ? dbHistory.score : null,
+              status: dbHistory && dbHistory.score > 3.0 ? 'Passed' : 'Failed',
+              summary: historySummary,
+              strengths: historyStrengths,
+              weaknesses: historyWeaknesses,
+              advice: historyAdvice,
               companies: companies.map(c => c.toJSON()),
               laborMarket: first.laborMarket,
               roadmap: [
@@ -141,7 +166,13 @@ async function claimAssessmentResult(sessionId, userId) {
               careersMap[cName].studyInfo.topSchools.push(sch.schoolName);
               careersMap[cName].trainingInstitutions.push(sch.toJSON());
             }
-            evalResult = { compatibleCareers: Object.values(careersMap) };
+            evalResult = {
+              summary: historySummary,
+              strengths: historyStrengths,
+              weaknesses: historyWeaknesses,
+              advice: historyAdvice,
+              compatibleCareers: Object.values(careersMap)
+            };
           } else {
             const careers = await KetQuaDiscoveryLam.findAll({ where: { userId: uid, sessionId } });
             const careersMap = {};
@@ -183,7 +214,13 @@ async function claimAssessmentResult(sessionId, userId) {
                 careersMap[cName].workInfo.hiringCompanies = ['FPT Software', 'Viettel', 'Các tập đoàn đa quốc gia'];
               }
             }
-            evalResult = { compatibleCareers: Object.values(careersMap) };
+            evalResult = {
+              summary: historySummary,
+              strengths: historyStrengths,
+              weaknesses: historyWeaknesses,
+              advice: historyAdvice,
+              compatibleCareers: Object.values(careersMap)
+            };
           }
         }
       } else {
@@ -316,6 +353,10 @@ async function claimAssessmentResult(sessionId, userId) {
         sessionId: sessionId,
         testMode: modeLower,
         score: scoreVal,
+        summary: evaluation ? evaluation.summary || null : null,
+        strengths: evaluation && evaluation.strengths ? JSON.stringify(evaluation.strengths) : null,
+        weaknesses: evaluation && evaluation.weaknesses ? JSON.stringify(evaluation.weaknesses) : null,
+        advice: evaluation ? evaluation.advice || null : null,
         createdAt: new Date()
       });
 

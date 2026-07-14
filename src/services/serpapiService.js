@@ -6,8 +6,51 @@
  */
 
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { getGenerativeModelWithFallback } = require("./geminiClient");
 
 const SERPAPI_BASE_URL = 'https://serpapi.com/search';
+const CACHE_FILE_PATH = path.resolve(__dirname, '../../benchmark_cache.json');
+
+// Khởi tạo model Gemini có Google Search Grounding để fallback
+const geminiGroundedModel = getGenerativeModelWithFallback({
+    model: "gemini-2.5-flash",
+    generationConfig: {
+        temperature: 0.1, // Thấp để con số chính xác nhất
+        maxOutputTokens: 256
+    },
+    tools: [{ googleSearch: {} }]
+});
+
+// Đọc cache từ file JSON
+let benchmarkCache = {};
+try {
+    if (fs.existsSync(CACHE_FILE_PATH)) {
+        const rawData = fs.readFileSync(CACHE_FILE_PATH, 'utf8');
+        benchmarkCache = JSON.parse(rawData);
+        console.log(`[BenchmarkCache] Đã tải cache từ file JSON với ${Object.keys(benchmarkCache).length} bản ghi`);
+    }
+} catch (e) {
+    console.error('[BenchmarkCache] Lỗi đọc file cache:', e.message);
+}
+
+// Hàm lưu cache vào file JSON
+function saveCacheToFile() {
+    try {
+        fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify(benchmarkCache, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[BenchmarkCache] Lỗi ghi file cache:', e.message);
+    }
+}
+
+// Tạo key cho cache
+function getCacheKey(universityName, major, year) {
+    const u = (universityName || '').trim().toLowerCase();
+    const m = (major || '').trim().toLowerCase();
+    const y = String(year).trim();
+    return `${u}_${m}_${y}`;
+}
 
 /**
  * Tìm kiếm điểm chuẩn đại học qua SerpAPI
@@ -110,16 +153,19 @@ const extractBenchmarkData = (results, universityName, major) => {
 
 /**
  * Trích xuất điểm chuẩn từ snippet - Cải thiện
- * Tìm các pattern phổ biến của điểm chuẩn Việt Nam
+ * Tìm các pattern phổ biến của điểm chuẩn Việt Nam, hỗ trợ cả số thập phân (1 và 2 chữ số) và số nguyên.
  */
 function extractScoreFromSnippet(snippet) {
     if (!snippet) return null;
     
     const lines = snippet.split(/[.\n]/);
     const scores = [];
+    const scoreRegex = /\b(1[5-9]|2\d|30)(?:[.,]\d{1,2})?\b/g;
     
     for (const line of lines) {
-        const lineScores = line.match(/\b(\d{1,2}[.,]\d)\b/g);
+        // Loại bỏ các mẫu ngày tháng dạng dd/mm hoặc mm/dd trước để tránh nhận diện sai
+        const cleanedLine = line.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, '');
+        const lineScores = cleanedLine.match(scoreRegex);
         if (lineScores) {
             for (const s of lineScores) {
                 const score = parseFloat(s.replace(',', '.'));
@@ -140,86 +186,122 @@ function extractScoreFromSnippet(snippet) {
 }
 
 /**
- * Tìm kiếm điểm chuẩn cho 1 năm cụ thể với nhiều biến thể query
+ * Tìm kiếm điểm chuẩn cho 1 năm cụ thể với 1 query duy nhất, tối ưu hiệu suất và quota
+ */
+/**
+ * Tìm kiếm điểm chuẩn bằng Gemini Google Search Grounding để làm cứu cánh (Fallback)
+ */
+async function getBenchmarkFromGeminiGrounding(universityName, major, year) {
+    try {
+        console.log(`[Gemini Grounding] Đang tìm kiếm điểm chuẩn bằng Gemini: ${universityName} - ${major || 'Tất cả'} năm ${year}...`);
+        const prompt = `Bạn là trợ lý trích xuất dữ liệu điểm chuẩn tuyển sinh đại học tại Việt Nam.
+Hãy sử dụng công cụ Google Search để tìm kiếm và trả về chính xác điểm chuẩn của trường "${universityName}"${major ? ', ngành "' + major + '"' : ''} trong năm học tuyển sinh ${year}.
+
+Yêu cầu cực kỳ nghiêm ngặt:
+1. Bạn phải tìm đúng trang tin chính thống, đáng tin cậy về điểm chuẩn đại học năm ${year}.
+2. Chỉ trả về một số thực duy nhất đại diện cho điểm chuẩn (ví dụ: 25.5 hoặc 28.25 hoặc 24).
+3. KHÔNG ĐƯỢC thêm bất kỳ lời giải thích, không thêm chữ "điểm", không kèm theo tên trường hay tên ngành. Chỉ trả về đúng con số điểm chuẩn.
+4. Nếu thực sự không tìm thấy điểm chuẩn sau khi tìm kiếm, chỉ trả về chữ "null".`;
+
+        const response = await geminiGroundedModel.generateContent(prompt);
+        const text = response.response.text().trim();
+        console.log(`[Gemini Grounding] Kết quả nhận được từ Gemini: "${text}"`);
+        
+        // Trích xuất con số từ text trả về
+        const cleanedText = text.replace(',', '.').replace(/[^\d.]/g, '');
+        if (cleanedText && !isNaN(parseFloat(cleanedText))) {
+            const score = parseFloat(cleanedText);
+            if (score >= 15 && score <= 30) {
+                return score;
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error(`[Gemini Grounding] Lỗi khi tra cứu:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Tìm kiếm điểm chuẩn cho 1 năm cụ thể với 1 query duy nhất, tối ưu hiệu suất và quota
  */
 const searchBenchmarkForYear = async (universityName, major, year) => {
-    // Tạo danh sách nhiều biến thể query để tăng tỉ lệ tìm được điểm chính xác
-    const queries = major 
-        ? [
-            `điểm chuẩn ${universityName} ngành ${major} ${year}`,
-            `${universityName} ${major} điểm chuẩn năm ${year}`,
-            `điểm chuẩn ${universityName} ${major} ${year} tuyển sinh`,
-            `${universityName} tuyển sinh ${year} ngành ${major} điểm`,
-            `site:dtv.vn điểm chuẩn ${universityName} ${major} ${year}`,
-            `${universityName} ngành ${major} ${year} chỉ tiêu điểm chuẩn`
-        ]
-        : [
-            `điểm chuẩn ${universityName} ${year}`,
-            `${universityName} điểm chuẩn năm ${year}`,
-            `tuyển sinh ${universityName} ${year} điểm chuẩn`,
-            `${universityName} ${year} điểm chuẩn tất cả ngành`,
-            `site:dtv.vn điểm chuẩn ${universityName} ${year}`
-        ];
+    // 1. Kiểm tra cache từ file JSON trước
+    const cacheKey = getCacheKey(universityName, major, year);
+    if (benchmarkCache[cacheKey] !== undefined) {
+        const cachedVal = benchmarkCache[cacheKey];
+        console.log(`[BenchmarkCache] Hit cache cho key: "${cacheKey}" => Điểm: ${cachedVal}`);
+        return {
+            success: true,
+            benchmarks: cachedVal ? [{ title: 'Cached Value', extractedScore: cachedVal, year: String(year) }] : [],
+            primaryScore: cachedVal,
+            scoresByYear: cachedVal ? { [year]: [cachedVal] } : {}
+        };
+    }
+
+    const query = major 
+        ? `điểm chuẩn ${universityName} ngành ${major} ${year}`
+        : `điểm chuẩn ${universityName} ${year}`;
     
     const apiKey = process.env.SERPAPI_API_KEY;
+    if (!apiKey) {
+        throw new Error('SERPAPI_API_KEY chưa được cấu hình trong file .env');
+    }
+
     const allBenchmarks = [];
     const scoresByYear = {}; // Map để tổng hợp điểm theo năm
     
-    for (const query of queries) {
-        try {
-            const response = await axios.get(SERPAPI_BASE_URL, {
-                params: {
-                    engine: 'google',
-                    q: query,
-                    api_key: apiKey,
-                    num: 10,
-                    gl: 'vn',
-                    hl: 'vi'
-                },
-                timeout: 30000
-            });
+    try {
+        console.log(`[SerpAPI] Đang truy vấn: "${query}"`);
+        const response = await axios.get(SERPAPI_BASE_URL, {
+            params: {
+                engine: 'google',
+                q: query,
+                api_key: apiKey,
+                num: 10,
+                gl: 'vn',
+                hl: 'vi'
+            },
+            timeout: 20000
+        });
+        
+        const organicResults = response.data.organic_results || [];
+        
+        for (const result of organicResults) {
+            const title = result.title || '';
+            const snippet = result.snippet || '';
+            const fullText = `${title} ${snippet}`;
             
-            const organicResults = response.data.organic_results || [];
+            const score = extractScoreFromSnippet(snippet);
             
-            for (const result of organicResults) {
-                const title = result.title || '';
-                const snippet = result.snippet || '';
-                const fullText = `${title} ${snippet}`;
+            // Xác định năm từ title hoặc snippet
+            const yearMatch = fullText.match(/20(2[3-5])/g) || [];
+            const detectedYear = yearMatch.length > 0 
+                ? yearMatch[yearMatch.length - 1] 
+                : String(year).slice(2);
+            
+            if (title.toLowerCase().includes('điểm chuẩn') || score !== null) {
+                allBenchmarks.push({
+                    title,
+                    link: result.link,
+                    snippet,
+                    extractedScore: score,
+                    year: `20${detectedYear}`,
+                    query: query
+                });
                 
-                const score = extractScoreFromSnippet(snippet);
-                
-                // Xác định năm từ title hoặc snippet
-                const yearMatch = fullText.match(/20(2[3-5])/g) || [];
-                const detectedYear = yearMatch.length > 0 
-                    ? yearMatch[yearMatch.length - 1] 
-                    : String(year).slice(2);
-                
-                if (title.toLowerCase().includes('điểm chuẩn') || score !== null) {
-                    allBenchmarks.push({
-                        title,
-                        link: result.link,
-                        snippet,
-                        extractedScore: score,
-                        year: `20${detectedYear}`,
-                        query: query
-                    });
-                    
-                    // Tổng hợp điểm theo năm phát hiện được
-                    if (score !== null) {
-                        const yearKey = `20${detectedYear}`;
-                        if (!scoresByYear[yearKey]) {
-                            scoresByYear[yearKey] = [];
-                        }
-                        scoresByYear[yearKey].push(score);
+                // Tổng hợp điểm theo năm phát hiện được
+                if (score !== null) {
+                    const yearKey = `20${detectedYear}`;
+                    if (!scoresByYear[yearKey]) {
+                        scoresByYear[yearKey] = [];
                     }
+                    scoresByYear[yearKey].push(score);
                 }
             }
-            
-            // Delay giữa các query
-            await new Promise(resolve => setTimeout(resolve, 800));
-        } catch (err) {
-            console.warn(`[SerpAPI] Query "${query}" lỗi:`, err.message);
         }
+    } catch (err) {
+        console.warn(`[SerpAPI] Query "${query}" lỗi:`, err.message);
     }
     
     // Lấy điểm median cho năm đang tìm
@@ -235,36 +317,49 @@ const searchBenchmarkForYear = async (universityName, major, year) => {
         bestScore = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     }
     
+    // 2. Fallback dùng Gemini Grounding nếu SerpAPI không có điểm
+    if (bestScore === null) {
+        console.log(`[SerpAPI] Trả về N/A điểm chuẩn cho năm ${year}. Kích hoạt Gemini Grounding...`);
+        bestScore = await getBenchmarkFromGeminiGrounding(universityName, major, year);
+    }
+
+    // 3. Ghi kết quả vào cache file JSON
+    benchmarkCache[cacheKey] = bestScore;
+    saveCacheToFile();
+    
     return {
         success: true,
-        benchmarks: allBenchmarks,
+        benchmarks: bestScore ? [{ title: 'Extracted Score', extractedScore: bestScore, year: String(year) }] : allBenchmarks,
         primaryScore: bestScore,
-        scoresByYear: scoresByYear
+        scoresByYear: bestScore ? { [year]: [bestScore] } : scoresByYear
     };
 };
 
 /**
- * Tìm kiếm chi tiết điểm chuẩn theo nhiều năm
+ * Tìm kiếm chi tiết điểm chuẩn theo nhiều năm (chạy song song)
  * @param {string} universityName - Tên trường
  * @param {string} major - Ngành (tùy chọn)
  * @param {number[]} years - Danh sách năm cần tìm (mặc định: [2025, 2024, 2023])
  */
 const searchBenchmarkByYears = async (universityName, major = null, years = [2025, 2024, 2023]) => {
     const results = {};
+    console.log(`[SerpAPI] Đang tìm kiếm điểm chuẩn song song các năm ${years.join(', ')} cho ${universityName}...`);
 
-    for (const year of years) {
+    const promises = years.map(async (year) => {
         try {
-            console.log(`[SerpAPI] Đang tìm kiếm điểm chuẩn năm ${year} cho ${universityName}...`);
-            
             const yearResult = await searchBenchmarkForYear(universityName, major, year);
-            
-            results[year] = yearResult;
-            console.log(`[SerpAPI] Năm ${year}: ${yearResult.benchmarks.length} kết quả, điểm: ${yearResult.primaryScore || 'N/A'}`);
-            
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            return { year, result: yearResult };
         } catch (error) {
             console.warn(`[SerpAPI] Lỗi khi tìm năm ${year}:`, error.message);
-            results[year] = { error: error.message, success: false };
+            return { year, result: { error: error.message, success: false } };
+        }
+    });
+
+    const outcomes = await Promise.all(promises);
+    for (const outcome of outcomes) {
+        results[outcome.year] = outcome.result;
+        if (outcome.result.success) {
+            console.log(`[SerpAPI] Năm ${outcome.year}: ${outcome.result.benchmarks?.length || 0} kết quả, điểm: ${outcome.result.primaryScore || 'N/A'}`);
         }
     }
 
@@ -390,9 +485,47 @@ const searchTopMajors = async (universityName, limit = 5) => {
     }
 };
 
+/**
+ * Tìm điểm chuẩn MỚI NHẤT (chỉ 1 năm - năm gần nhất có dữ liệu).
+ * Trả về: { benchmark: number|null, year: number|null, source: string }
+ * @param {string} universityName
+ * @param {string|null} major
+ * @param {number} [latestYear=2025] - Năm ưu tiên (mặc định 2025)
+ * @param {number[]} [fallbackYears=[2024, 2023]] - Các năm fallback nếu năm chính không có dữ liệu
+ */
+const searchLatestBenchmark = async (universityName, major = null, latestYear = 2025, fallbackYears = [2024, 2023]) => {
+    console.log(`[SerpAPI] Tìm điểm chuẩn mới nhất cho ${universityName}${major ? ' - ' + major : ''}...`);
+
+    const allYears = [latestYear, ...fallbackYears];
+    for (const year of allYears) {
+        try {
+            const yearResult = await searchBenchmarkForYear(universityName, major, year);
+            if (yearResult.success && yearResult.primaryScore != null) {
+                console.log(`[SerpAPI] Tìm được điểm ${yearResult.primaryScore} cho năm ${year}`);
+                return {
+                    benchmark: Number(yearResult.primaryScore.toFixed(2)),
+                    year,
+                    source: 'serpapi',
+                    raw: yearResult
+                };
+            }
+        } catch (err) {
+            console.warn(`[SerpAPI] Lỗi khi tìm năm ${year}:`, err.message);
+        }
+    }
+
+    console.log(`[SerpAPI] Không tìm được điểm chuẩn cho ${universityName}${major ? ' - ' + major : ''}`);
+    return {
+        benchmark: null,
+        year: null,
+        source: 'serpapi'
+    };
+};
+
 module.exports = {
     searchUniversityBenchmark,
     searchBenchmarkByYears,
+    searchLatestBenchmark,
     searchTopMajors,
     extractScoreFromSnippet
 };

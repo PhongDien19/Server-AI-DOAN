@@ -1,10 +1,10 @@
 const { getGenerativeModelWithFallback } = require("./geminiClient");
-const { searchBenchmarkByYears } = require("./serpapiService");
+const { searchBenchmarkByYears, searchLatestBenchmark } = require("./serpapiService");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash", // Default model, falls back to others on error
     generationConfig: {
-        temperature: 0.5, // Giảm randomness để response nhanh hơn
+        temperature: 0.2, // Giảm randomness để response nhanh hơn
         maxOutputTokens: 4096, // Tăng giới hạn output để tránh bị cắt cụt JSON
     },
     tools: [{ googleSearch: {} }]
@@ -258,10 +258,11 @@ NHIỆM VỤ: Gợi ý danh sách các trường Đại học/Cao đẳng tại 
 QUY TẮC BẮT BUỘC:
 1. Chỉ trả về JSON hợp lệ, KHÔNG kèm markdown, KHÔNG giải thích thêm.
 2. Cung cấp ĐÚNG từ 4 đến 6 trường.
-3. Mỗi trường PHẢI có đầy đủ: schoolName, major (tên ngành), location (tỉnh/thành phố), description (mô tả ngắn 1-2 câu về điểm mạnh đào tạo ngành này), benchmarks (chuỗi mô tả điểm chuẩn 3 năm gần nhất 2025/2024/2023, ví dụ "2025: 26.5 - 2024: 25.0 - 2023: 24.0"), officialLink (URL trang chủ), admissionLink (URL cổng tuyển sinh).
+3. Mỗi trường PHẢI có đầy đủ: schoolName, major (tên ngành), location (tỉnh/thành phố), description (mô tả ngắn 1-2 câu về điểm mạnh đào tạo ngành này), benchmarks (mô tả điểm chuẩn NĂM GẦN NHẤT, ví dụ "2025: 26.5"), benchmarkYear (năm của điểm chuẩn, ví dụ 2025), officialLink (URL trang chủ), admissionLink (URL cổng tuyển sinh).
 4. QUY TẮC THANG ĐIỂM 30: Điểm chuẩn benchmarks PHẢI ở thang điểm tốt nghiệp THPT Quốc gia truyền thống (tối đa là 30.0). Tuyệt đối không dùng thang điểm 100 hay thang khác. Nếu trường dùng thang 100 (như Bách khoa TP.HCM) hoặc nhân hệ số (thang 40), hãy tự động quy đổi tương đương về thang điểm 30 (ví dụ 80/100 -> quy đổi thành điểm thi THPT tương ứng từ 24.0 đến 28.0).
-5. Nếu không chắc chắn điểm chuẩn chính xác thì đặt "Đang cập nhật".
-6. BẮT BUỘC trả về JSON theo cấu trúc:
+5. CHỈ trả điểm chuẩn MỘT NĂM GẦN NHẤT (ưu tiên 2025), KHÔNG trả 3 năm.
+6. Nếu không chắc chắn điểm chuẩn chính xác thì đặt "Đang cập nhật" và benchmarkYear = null.
+7. BẮT BUỘC trả về JSON theo cấu trúc:
 {
   "summary": "Tóm tắt ngắn 2-3 câu về ngành ${career} và triển vọng học tập tại Việt Nam.",
   "schools": [
@@ -270,7 +271,8 @@ QUY TẮC BẮT BUỘC:
       "major": "Tên ngành đào tạo",
       "location": "Tỉnh/Thành phố",
       "description": "Mô tả ngắn gọn...",
-      "benchmarks": "Điểm chuẩn 3 năm gần nhất",
+      "benchmarks": "Điểm chuẩn năm gần nhất (ví dụ: 2025: 26.5)",
+      "benchmarkYear": 2025,
       "officialLink": "https://...",
       "admissionLink": "https://..."
     }
@@ -439,10 +441,14 @@ Trả về JSON:
  */
 function extractSpecificBenchmarks(snippets) {
     const scores = [];
+    const scoreRegex = /\b(1[5-9]|2\d|30)(?:[.,]\d{1,2})?\b/g;
+
     for (const snippet of snippets) {
         const snippetText = snippet.snippet || '';
-        // Tìm pattern điểm chuẩn: VD "26.5", "25.0" trong snippet
-        const scoreMatches = snippetText.match(/\b(\d{1,2}[.,]\d)\b/g);
+        // Loại bỏ các mẫu ngày tháng dạng dd/mm hoặc mm/dd trước để tránh nhận diện sai
+        const cleanedText = snippetText.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, '');
+        // Tìm pattern điểm chuẩn: VD "26.5", "25.0", "28.25", "24" trong snippet
+        const scoreMatches = cleanedText.match(scoreRegex);
         if (scoreMatches) {
             const validScores = scoreMatches
                 .map(s => parseFloat(s.replace(',', '.')))
@@ -461,10 +467,10 @@ function extractSpecificBenchmarks(snippets) {
 }
 
 /**
- * Lấy điểm chuẩn từ SerpAPI cho nhiều năm
+ * Lấy điểm chuẩn từ SerpAPI - CHỈ 1 NĂM MỚI NHẤT (đảm bảo có giá trị)
  * @param {string} schoolName - Tên trường
  * @param {string} career - Ngành học
- * @returns {Promise<object|null>}
+ * @returns {Promise<{benchmark: string|null, year: number|null, source: string} | null>}
  */
 async function getBenchmarksFromSerpAPI(schoolName, career = null) {
     try {
@@ -473,36 +479,20 @@ async function getBenchmarksFromSerpAPI(schoolName, career = null) {
             return null;
         }
 
-        const results = await searchBenchmarkByYears(schoolName, career, [2025, 2024, 2023]);
+        const result = await searchLatestBenchmark(schoolName, career, 2025, [2024, 2023]);
+        if (!result || result.benchmark == null) return null;
 
-        // Trích xuất điểm chuẩn cụ thể cho mỗi năm
-        const extractedBenchmarks = {
-            benchmark2025: null,
-            benchmark2024: null,
-            benchmark2023: null
+        return {
+            benchmark: result.benchmark.toFixed(1),
+            year: result.year,
+            source: 'serpapi'
         };
-
-        for (const [year, result] of Object.entries(results)) {
-            if (result.success && result.benchmarks && result.benchmarks.length > 0) {
-                const score = extractSpecificBenchmarks(result.benchmarks);
-                if (score !== null) {
-                    if (year === 2025) extractedBenchmarks.benchmark2025 = score.toFixed(1);
-                    if (year === 2024) extractedBenchmarks.benchmark2024 = score.toFixed(1);
-                    if (year === 2023) extractedBenchmarks.benchmark2023 = score.toFixed(1);
-                }
-            }
-        }
-
-        // Kiểm tra xem có ít nhất 1 năm có điểm chuẩn không
-        if (extractedBenchmarks.benchmark2025 || extractedBenchmarks.benchmark2024 || extractedBenchmarks.benchmark2023) {
-            return { source: 'serpapi', data: extractedBenchmarks };
-        }
-        return null;
     } catch (error) {
         console.error('[AI Service] Lỗi khi lấy điểm chuẩn từ SerpAPI:', error.message);
         return null;
     }
 }
+
 
 /**
  * Bước 1: Đánh giá phù hợp nghề - AI tạo danh sách trường theo ngành + khu vực
@@ -536,9 +526,8 @@ async function evaluateCareerTest(testName, questions, userContext = {}) {
       "schoolName": "Tên trường đại học/cao đẳng phù hợp với khu vực ${location}",
       "schoolLocation": "Tỉnh/Thành phố của trường",
       "description": "Mô tả ngắn về điểm nổi bật của trường liên quan đến ngành này.",
-      "benchmark2025": null,
-      "benchmark2024": null,
-      "benchmark2023": null,
+      "benchmark": null,
+      "benchmarkYear": null,
       "officialLink": null,
       "admissionLink": null
     }
@@ -607,15 +596,14 @@ Chỉ trả về JSON, không kèm giải thích.`;
         // BƯỚC 2: Gọi SerpAPI để lấy điểm chuẩn cho TỪNG trường trong danh sách
         if (isStudent && parsed.trainingInstitutions && Array.isArray(parsed.trainingInstitutions)) {
             const targetJob = ctx.targetJob || '';
-            
+
             for (const school of parsed.trainingInstitutions) {
                 if (school.schoolName && targetJob) {
                     try {
                         const serpapiResult = await getBenchmarksFromSerpAPI(school.schoolName, targetJob);
-                        if (serpapiResult) {
-                            school.benchmark2025 = serpapiResult.data.benchmark2025 || null;
-                            school.benchmark2024 = serpapiResult.data.benchmark2024 || null;
-                            school.benchmark2023 = serpapiResult.data.benchmark2023 || null;
+                        if (serpapiResult && serpapiResult.benchmark) {
+                            school.benchmark = serpapiResult.benchmark;
+                            school.benchmarkYear = serpapiResult.year;
                         }
                         // Delay nhẹ để tránh rate limit
                         await new Promise(resolve => setTimeout(resolve, 800));

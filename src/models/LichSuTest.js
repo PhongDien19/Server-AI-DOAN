@@ -15,7 +15,7 @@ const LichSuTest = sequelize.define('LichSuTest', {
   sessionId: {
     type: DataTypes.STRING(255),
     allowNull: false,
-    unique: true,
+    unique: 'sessionId',
     field: 'sessionId'
   },
   testMode: {
@@ -27,6 +27,26 @@ const LichSuTest = sequelize.define('LichSuTest', {
     type: DataTypes.FLOAT,
     allowNull: true,
     field: 'score'
+  },
+  summary: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'summary'
+  },
+  strengths: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'strengths'
+  },
+  weaknesses: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'weaknesses'
+  },
+  advice: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'advice'
   },
   createdAt: {
     type: DataTypes.DATE,

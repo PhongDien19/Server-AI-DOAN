@@ -21,7 +21,7 @@ const Taikhoan = sequelize.define('Taikhoan', {
   email: {
     type: DataTypes.STRING(50),
     allowNull: true,
-    unique: true,
+    unique: 'Email',
     field: 'Email'
   },
   role: {

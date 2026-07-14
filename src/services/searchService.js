@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
-const { searchBenchmarkByYears, searchTopMajors, searchUniversityBenchmark } = require("./serpapiService");
+const { searchBenchmarkByYears, searchLatestBenchmark, searchTopMajors, searchUniversityBenchmark } = require("./serpapiService");
+const verification = require("./verificationService");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash",
@@ -19,6 +20,8 @@ function extractBenchmarkFromSerpAPI(benchmarks) {
     }
     
     const scores = [];
+    const scoreRegex = /\b(1[5-9]|2\d|30)(?:[.,]\d{1,2})?\b/g;
+
     for (const item of benchmarks) {
         if (item.extractedScore && typeof item.extractedScore === 'number') {
             if (item.extractedScore >= 15 && item.extractedScore <= 30) {
@@ -26,7 +29,9 @@ function extractBenchmarkFromSerpAPI(benchmarks) {
             }
         }
         const snippet = item.snippet || '';
-        const matches = snippet.match(/\b(\d{1,2}[.,]\d)\b/g);
+        // Loại bỏ các mẫu ngày tháng dạng dd/mm hoặc mm/dd trước để tránh nhận diện sai
+        const cleanedSnippet = snippet.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, '');
+        const matches = cleanedSnippet.match(scoreRegex);
         if (matches) {
             for (const m of matches) {
                 const score = parseFloat(m.replace(',', '.'));
@@ -44,42 +49,153 @@ function extractBenchmarkFromSerpAPI(benchmarks) {
 }
 
 /**
- * Lấy điểm chuẩn từ SerpAPI cho một trường + ngành
+ * Lấy điểm chuẩn cho một trường + ngành.
+ * Ưu tiên nguồn đã xác minh (crawler benchmarkScores.js) trước,
+ * nếu không có mới gọi SerpAPI (ước lượng).
+ *
+ * @returns {Promise<{benchmark: string|null, year: number|null, source: string, verified: boolean} | null>}
  */
 async function getBenchmarkFromSerpAPI(universityName, major = null) {
+    // 1) Ưu tiên cache crawler (nguồn đã xác minh)
+    try {
+        const cached = verification.lookupBenchmarkFromCache(universityName, major);
+        if (cached && cached.value !== null) {
+            return {
+                benchmark: cached.value.toFixed(1),
+                year: cached.year,
+                source: 'crawler',
+                verified: true
+            };
+        }
+    } catch (e) {
+        console.warn('[SearchService] Lỗi tra cache crawler:', e.message);
+    }
+
+    // 2) Fallback sang SerpAPI (ước lượng)
     try {
         if (!process.env.SERPAPI_API_KEY) {
             console.warn('[SearchService] SERPAPI_API_KEY chưa được cấu hình');
             return null;
         }
 
-        const results = await searchBenchmarkByYears(universityName, major, [2025, 2024, 2023]);
-        
-        const extracted = {
-            benchmark2025: null,
-            benchmark2024: null,
-            benchmark2023: null,
-            source: 'serpapi'
+        const result = await searchLatestBenchmark(universityName, major, 2025, [2024, 2023]);
+        if (!result || result.benchmark == null) {
+            return null;
+        }
+
+        // Lọc qua normalizeBenchmark để đảm bảo thuộc thang 30
+        const norm = verification.normalizeBenchmark(result.benchmark, 'serpapi');
+        if (norm.value === null) {
+            console.warn(`[SearchService] Điểm từ SerpAPI (${result.benchmark}) nằm ngoài thang 30 -> bỏ`);
+            return null;
+        }
+
+        return {
+            benchmark: norm.value.toFixed(1),
+            year: result.year,
+            source: 'serpapi',
+            verified: false
         };
-
-        for (const [year, result] of Object.entries(results)) {
-            if (result.success) {
-                const score = extractBenchmarkFromSerpAPI(result.benchmarks);
-                if (score !== null) {
-                    if (year === '2025') extracted.benchmark2025 = score.toFixed(1);
-                    if (year === '2024') extracted.benchmark2024 = score.toFixed(1);
-                    if (year === '2023') extracted.benchmark2023 = score.toFixed(1);
-                }
-            }
-        }
-
-        if (extracted.benchmark2025 || extracted.benchmark2024 || extracted.benchmark2023) {
-            return extracted;
-        }
-        return null;
     } catch (error) {
         console.error('[SearchService] Lỗi khi lấy điểm chuẩn từ SerpAPI:', error.message);
         return null;
+    }
+}
+
+/**
+ * Whitelist trường & helper xác minh được dùng chung qua verificationService.
+ * (Tránh định nghĩa trùng lặp; mọi nơi trong file này sẽ gọi qua `verification.*`)
+ */
+const SCHOOL_DIRECTORY = verification.SCHOOL_DIRECTORY;
+const getLocationAliases = verification.getLocationAliases;
+const lookupSchoolInDirectory = verification.lookupSchool;
+const filterSchoolsByLocation = verification.filterSchoolsByLocation;
+const normalizeSchoolInDirectory = verification.normalizeSchool;
+const normalizeBenchmark = verification.normalizeBenchmark;
+
+/**
+ * Gợi ý danh sách trường đào tạo ngành bằng Gemini (khi SerpAPI lỗi hoặc hết quota)
+ * - Chỉ giữ tên thuộc whitelist (verificationService.SCHOOL_DIRECTORY)
+ * - Nếu có chọn khu vực -> lọc đúng khu vực
+ */
+async function getSchoolsFromGeminiFallback(majorName, location = null) {
+    console.log(`[Gemini Fallback] Đang lấy danh sách trường đào tạo ngành: "${majorName}" tại "${location || 'Toàn quốc'}"...`);
+    try {
+        const prompt = `Bạn là chuyên gia hướng nghiệp tại Việt Nam.
+Người dùng đang tìm kiếm danh sách các trường đại học tiêu biểu nhất đào tạo ngành: "${majorName}" ở khu vực "${location || 'Toàn quốc'}".
+Hãy gợi ý tối đa 5 trường đại học phù hợp nhất.
+
+Hãy trả về dữ liệu dưới dạng JSON chuẩn xác theo cấu trúc sau:
+{
+  "schools": [
+    {
+      "schoolName": "Tên trường đầy đủ (ví dụ: Đại học Bách khoa Hà Nội)"
+    }
+  ]
+}
+
+Yêu cầu:
+1. Chỉ trả về chuỗi JSON thô, không kèm định dạng markdown (không có dấu \`\`\`json), không giải thích gì thêm.
+2. Danh sách trường phải thực tế và có đào tạo ngành này.`;
+
+        const response = await model.generateContent(prompt);
+        const text = response.response.text().trim();
+        console.log('[Gemini Fallback] Response trường từ Gemini:', text);
+        
+        const parsed = extractJsonFromText(text);
+        if (!parsed || !parsed.schools || !Array.isArray(parsed.schools)) {
+            throw new Error("Không thể phân tích danh sách trường từ Gemini");
+        }
+        
+        const result = {
+            searchType: 'major_only',
+            majorName: majorName,
+            location: location || 'Toàn quốc',
+            summary: `Danh sách ${parsed.schools.length} trường đại học hàng đầu đào tạo ngành ${majorName} (Được đề xuất bởi AI)`,
+            schools: []
+        };
+        
+        const allowedLocations = verification.getLocationAliases(location);
+        for (const s of parsed.schools) {
+            const normSchool = verification.normalizeSchool(s.schoolName, location);
+            if (!normSchool.verified) {
+                console.warn(`[Gemini Fallback] Bỏ trường không xác minh: ${s.schoolName}`);
+                continue;
+            }
+            if (allowedLocations &&
+                !allowedLocations.includes(normSchool.location.toLowerCase())) {
+                continue;
+            }
+
+            const schoolInfo = {
+                schoolName: normSchool.canonical,
+                location: normSchool.location || location || 'Việt Nam',
+                schoolVerified: true,
+                benchmark: null,
+                benchmarkYear: null,
+                benchmarkSource: null,
+                benchmarkVerified: false
+            };
+
+            try {
+                const benchmarkData = await getBenchmarkFromSerpAPI(normSchool.canonical, majorName);
+                if (benchmarkData && benchmarkData.benchmark) {
+                    schoolInfo.benchmark = benchmarkData.benchmark;
+                    schoolInfo.benchmarkYear = benchmarkData.year;
+                    schoolInfo.benchmarkSource = benchmarkData.source;
+                    schoolInfo.benchmarkVerified = benchmarkData.verified;
+                }
+            } catch (err) {
+                console.warn(`[Gemini Fallback] Lỗi lấy điểm cho ${s.schoolName}:`, err.message);
+            }
+
+            result.schools.push(schoolInfo);
+        }
+
+        return result;
+    } catch (error) {
+        console.error('[Gemini Fallback] Thất bại hoàn toàn:', error.message);
+        throw error;
     }
 }
 
@@ -102,180 +218,192 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
 
         console.log(`[SearchService] Query SerpAPI: "${query}"`);
         
-        const response = await axios.get('https://serpapi.com/search', {
-            params: {
-                engine: 'google',
-                q: query,
-                api_key: apiKey,
-                num: 20,
-                gl: 'vn',
-                hl: 'vi'
-            },
-            timeout: 30000
-        });
-
-        const organicResults = response.data.organic_results || [];
-        
-        // Trích xuất trường từ kết quả tìm kiếm - dùng regex để bắt nhiều pattern
-        const schoolsMap = new Map();
-        
-        // Pattern regex nhận diện tên trường đa dạng hơn
-        const schoolPatterns = [
-            /(Đại học|DH|ĐH)\s+(Bách Khoa|Quốc gia|Kinh tế|Ngoại thương|FPT|RMIT|Y Hà Nội|Sư phạm|KHTN|Khoa học Tự nhiên|Công nghệ|Cần Thơ|Huế|Bình Dương|Duy Tân|Đông Á|Mở|Tôn Đức Thắng|Hoà Bình|Văn Lang|HUTECH|Nguyễn Tất Thành|Sài Gòn|Ngoại ngữ|Công nghiệp|Giao thông vận tải|Xây dựng|Kiến trúc|Luật|Hà Nội|HCMUS|HCMUT|Phenikaa|FULLBRIGHT|HANU)/gi,
-            /(Học viện|HV)\s+(Ngân hàng|Tài chính|Công nghệ Bưu chính Viễn thông|Quân Y|An ninh Nhân dân|Quản lý Giáo dục)/gi,
-            /Trường\s+(Đại học|Cao đẳng)\s+([A-ZÀ-Ỹ][a-zà-ỹ]+(?:\s+[A-ZÀ-Ỹ][a-zà-ỹ]+)*)/g
-        ];
-
-        // Danh sách trường phổ biến để nhận diện
-        const commonUniversities = [
-            'Đại học Bách Khoa', 'Đại học Quốc gia', 'Đại học Kinh tế', 'Đại học Ngoại thương',
-            'Đại học FPT', 'Đại học RMIT', 'Đại học Y Hà Nội', 'Đại học Sư phạm',
-            'Đại học KHTN', 'Học viện Ngân hàng', 'Học viện Tài chính', 'Đại học Luật',
-            'Đại học Kiến trúc', 'Đại học Mỹ thuật', 'Đại học Y dược', 'Đại học Duy Tân',
-            'Đại học Đông Á', 'Đại học Bình Dương', 'Đại học Cần Thơ', 'Đại học Huế',
-            'Đại học Tôn Đức Thắng', 'Đại học Mở', 'Đại học Hoà Bình', 'Đại học Văn Lang',
-            'Đại học HUTECH', 'Đại học Nguyễn Tất Thành', 'Đại học Sài Gòn',
-            'Đại học Ngoại ngữ', 'Đại học Công nghiệp', 'Đại học Giao thông vận tải',
-            'Đại học Xây dựng', 'Đại học Phenikaa', 'Đại học Hà Nội'
-        ];
-
-        // Hàm tìm trường trong text
-        const findSchools = (text) => {
-            const found = [];
-            const lowerText = text.toLowerCase();
-            
-            // Tìm theo danh sách phổ biến trước
-            for (const uni of commonUniversities) {
-                if (lowerText.includes(uni.toLowerCase())) {
-                    found.push(uni);
-                }
-            }
-            
-            // Tìm theo pattern
-            for (const pattern of schoolPatterns) {
-                const matches = text.matchAll(pattern);
-                for (const match of matches) {
-                    found.push(match[0].trim());
-                }
-            }
-            
-            return found;
-        };
-
-        // Gộp tất cả text từ các kết quả để tìm trường
-        const allText = organicResults.map(r => `${r.title || ''} ${r.snippet || ''}`).join('\n');
-        const foundSchools = findSchools(allText);
-        
-        // Thêm các trường tìm được vào map
-        for (const schoolName of foundSchools) {
-            const key = schoolName.toLowerCase();
-            if (!schoolsMap.has(key)) {
-                // Tìm điểm trong snippet liên quan
-                let bestScore = null;
-                for (const result of organicResults) {
-                    const text = `${result.title || ''} ${result.snippet || ''}`;
-                    if (text.toLowerCase().includes(schoolName.toLowerCase())) {
-                        const score = extractBenchmarkFromSnippet(result.snippet || '');
-                        if (score !== null) {
-                            bestScore = score;
-                            break;
-                        }
-                    }
-                }
-                
-                schoolsMap.set(key, {
-                    schoolName: schoolName,
-                    score: bestScore,
-                    link: null,
-                    snippet: '',
-                    sourceTitle: ''
-                });
-            }
-        }
-
-        // Nếu không tìm được trường nào, dùng query khác để tìm danh sách trường
-        if (schoolsMap.size < 3) {
-            console.log('[SearchService] Tìm thêm trường với query khác...');
-            const query2 = `top 5 trường đào tạo ${majorName} tốt nhất Việt Nam`;
-            
-            const response2 = await axios.get('https://serpapi.com/search', {
+        let organicResults = [];
+        try {
+            const response = await axios.get('https://serpapi.com/search', {
                 params: {
                     engine: 'google',
-                    q: query2,
+                    q: query,
                     api_key: apiKey,
-                    num: 15,
+                    num: 20,
                     gl: 'vn',
                     hl: 'vi'
                 },
                 timeout: 30000
             });
-            
-            const organicResults2 = response2.data.organic_results || [];
-            const allText2 = organicResults2.map(r => `${r.title || ''} ${r.snippet || ''}`).join('\n');
-            const foundSchools2 = findSchools(allText2);
-            
-            for (const schoolName of foundSchools2) {
-                const key = schoolName.toLowerCase();
-                if (!schoolsMap.has(key)) {
-                    schoolsMap.set(key, {
-                        schoolName: schoolName,
-                        score: null,
-                        link: null,
-                        snippet: '',
-                        sourceTitle: ''
-                    });
+            organicResults = response.data.organic_results || [];
+        } catch (apiErr) {
+            console.warn('[SearchService] SerpAPI tìm trường thất bại:', apiErr.message);
+            // Kích hoạt Gemini Fallback để lấy danh sách trường và điểm
+            return await getSchoolsFromGeminiFallback(majorName, location);
+        }
+        
+        // Trích xuất trường từ kết quả tìm kiếm - chỉ giữ tên nằm trong whitelist
+        const schoolsMap = new Map();
+
+        // Lấy text đầy đủ để quét tên trường
+        const allText = organicResults.map(r => `${r.title || ''} ${r.snippet || ''}`).join('\n');
+        const allowedLocations = getLocationAliases(location);
+
+        // 1) Quét theo whitelist trước (ưu tiên các trường nằm trong khu vực yêu cầu)
+        for (const entry of SCHOOL_DIRECTORY) {
+            const isInRegion = allowedLocations
+                ? allowedLocations.includes(entry.location.toLowerCase())
+                : true;
+            if (!isInRegion) continue;
+
+            const aliasSet = [...entry.aliases, entry.canonical.toLowerCase()];
+            for (const alias of aliasSet) {
+                if (alias.length < 5) continue;
+                if (allText.toLowerCase().includes(alias)) {
+                    const key = entry.canonical.toLowerCase();
+                    if (!schoolsMap.has(key)) {
+                        // Tìm điểm trong các snippet liên quan
+                        let bestScore = null;
+                        for (const result of organicResults) {
+                            const text = `${result.title || ''} ${result.snippet || ''}`;
+                            if (text.toLowerCase().includes(alias)) {
+                                const score = extractBenchmarkFromSnippet(result.snippet || '');
+                                if (score !== null) {
+                                    bestScore = score;
+                                    break;
+                                }
+                            }
+                        }
+
+                        schoolsMap.set(key, {
+                            schoolName: entry.canonical,
+                            location: entry.location,
+                            score: bestScore,
+                            link: null,
+                            snippet: '',
+                            sourceTitle: 'whitelist',
+                        });
+                    }
+                    break; // đã khớp canonical này, không cần duyệt alias khác
                 }
             }
         }
 
-        // Nếu vẫn không đủ, thêm trường phổ biến theo ngành
+        // 2) Nếu whitelist chưa đủ 3 và người dùng có chọn khu vực,
+        //    bổ sung bằng SerpAPI nhưng CHỈ giữ tên khớp whitelist (chống cắt cụt/ảo)
+        if (schoolsMap.size < 3) {
+            console.log('[SearchService] Whitelist chưa đủ, bổ sung thêm từ SerpAPI...');
+            const query2 = `top các trường đào tạo ${majorName} tại ${location || 'Việt Nam'}`;
+            try {
+                const response2 = await axios.get('https://serpapi.com/search', {
+                    params: {
+                        engine: 'google',
+                        q: query2,
+                        api_key: apiKey,
+                        num: 15,
+                        gl: 'vn',
+                        hl: 'vi'
+                    },
+                    timeout: 30000
+                });
+                const organicResults2 = response2.data.organic_results || [];
+                const allText2 = organicResults2.map(r => `${r.title || ''} ${r.snippet || ''}`).join('\n');
+
+                for (const entry of SCHOOL_DIRECTORY) {
+                    const isInRegion = allowedLocations
+                        ? allowedLocations.includes(entry.location.toLowerCase())
+                        : true;
+                    if (!isInRegion) continue;
+                    const key = entry.canonical.toLowerCase();
+                    if (schoolsMap.has(key)) continue;
+
+                    const aliasSet = [...entry.aliases, entry.canonical.toLowerCase()];
+                    for (const alias of aliasSet) {
+                        if (alias.length < 5) continue;
+                        if (allText2.toLowerCase().includes(alias)) {
+                            schoolsMap.set(key, {
+                                schoolName: entry.canonical,
+                                location: entry.location,
+                                score: null,
+                                link: null,
+                                snippet: '',
+                                sourceTitle: 'whitelist-supp'
+                            });
+                            break;
+                        }
+                    }
+                }
+            } catch (apiErr2) {
+                console.warn('[SearchService] Query bổ sung thất bại:', apiErr2.message);
+            }
+        }
+
+        // 3) Nếu vẫn chưa đủ 3 và có khu vực cụ thể, bổ sung bằng Gemini (fallback có kiểm tra whitelist)
+        if (schoolsMap.size < 3) {
+            console.log('[SearchService] Bổ sung bằng Gemini Fallback...');
+            try {
+                const geminiResult = await getSchoolsFromGeminiFallback(majorName, location);
+                if (geminiResult && Array.isArray(geminiResult.schools)) {
+                    for (const sch of geminiResult.schools) {
+                        const entry = lookupSchoolInDirectory(sch.schoolName);
+                        if (!entry) continue;
+                        if (allowedLocations &&
+                            !allowedLocations.includes(entry.location.toLowerCase())) {
+                            continue;
+                        }
+                        const key = entry.canonical.toLowerCase();
+                        if (schoolsMap.has(key)) continue;
+                        schoolsMap.set(key, {
+                            schoolName: entry.canonical,
+                            location: entry.location,
+                            score: sch.benchmark ? parseFloat(sch.benchmark) : null,
+                            link: null,
+                            snippet: '',
+                            sourceTitle: 'gemini'
+                        });
+                    }
+                }
+            } catch (geminiErr) {
+                console.warn('[SearchService] Gemini fallback lỗi:', geminiErr.message);
+            }
+        }
+
+        // 4) Nếu cuối cùng vẫn chưa đủ 5, thêm các trường whitelist phổ biến theo ngành + khu vực
         if (schoolsMap.size < 5) {
             const majorLower = majorName.toLowerCase();
-            const defaultSchoolsByMajor = {
-                'công nghệ thông tin': ['Đại học Bách Khoa', 'Đại học FPT', 'Đại học Quốc gia', 'Đại học Công nghệ', 'Đại học CNTT'],
-                'khoa học máy tính': ['Đại học Bách Khoa', 'Đại học Quốc gia', 'Đại học FPT', 'Đại học CNTT', 'Đại học Khoa học Tự nhiên'],
-                'y khoa': ['Đại học Y Hà Nội', 'Đại học Y Dược', 'Đại học Y khoa Phạm Ngọc Thạch', 'Đại học Y Dược Cần Thơ', 'Đại học Huế'],
-                'kinh tế': ['Đại học Kinh tế Quốc dân', 'Đại học Ngoại thương', 'Đại học Kinh tế TP.HCM', 'Học viện Tài chính', 'Học viện Ngân hàng'],
-                'quản trị kinh doanh': ['Đại học Kinh tế Quốc dân', 'Đại học Ngoại thương', 'Đại học FPT', 'Đại học RMIT', 'Đại học Hoà Bình'],
-                'kế toán': ['Đại học Kinh tế Quốc dân', 'Học viện Tài chính', 'Đại học Ngoại thương', 'Học viện Ngân hàng', 'Đại học Kinh tế TP.HCM'],
-                'luật': ['Đại học Luật Hà Nội', 'Đại học Luật TP.HCM', 'Đại học Kinh tế - Luật', 'Đại học Mở', 'Đại học Duy Tân'],
-                'sư phạm': ['Đại học Sư phạm Hà Nội', 'Đại học Sư phạm TP.HCM', 'Đại học Sư phạm Huế', 'Đại học Sư phạm Đà Nẵng', 'Đại học Cần Thơ']
+            const extraByMajor = {
+                'thiết kế đồ họa': ['Trường Đại học Kiến trúc Đà Nẵng', 'Trường Đại học Mỹ thuật Đà Nẵng', 'Đại học Bách khoa - ĐH Đà Nẵng', 'Đại học Sư phạm - ĐH Đà Nẵng'],
+                'thiết kế': ['Trường Đại học Kiến trúc Đà Nẵng', 'Trường Đại học Mỹ thuật Đà Nẵng', 'Đại học Bách khoa - ĐH Đà Nẵng'],
+                'đồ họa': ['Trường Đại học Kiến trúc Đà Nẵng', 'Trường Đại học Mỹ thuật Đà Nẵng'],
+                'mỹ thuật': ['Trường Đại học Mỹ thuật Đà Nẵng', 'Trường Đại học Mỹ thuật Việt Nam', 'Trường Đại học Mỹ thuật TP.HCM'],
+                'công nghệ thông tin': ['Đại học Bách khoa - ĐH Đà Nẵng', 'Đại học Sư phạm Kỹ thuật - ĐH Đà Nẵng', 'Trường Đại học Duy Tân'],
+                'it': ['Đại học Bách khoa - ĐH Đà Nẵng', 'Đại học Sư phạm Kỹ thuật - ĐH Đà Nẵng', 'Trường Đại học Duy Tân'],
+                'kinh tế': ['Đại học Kinh tế - ĐH Đà Nẵng', 'Đại học Bách khoa - ĐH Đà Nẵng'],
+                'sư phạm': ['Đại học Sư phạm - ĐH Đà Nẵng', 'Đại học Sư phạm Kỹ thuật - ĐH Đà Nẵng'],
             };
-            
-            const defaults = defaultSchoolsByMajor[majorLower] || [
-                'Đại học Bách Khoa',
-                'Đại học Quốc gia Hà Nội',
-                'Đại học Quốc gia TP.HCM',
-                'Đại học FPT',
-                'Đại học Cần Thơ'
-            ];
-            
-            for (const defSchool of defaults) {
+
+            const candidates = extraByMajor[majorLower] || [];
+            for (const cand of candidates) {
                 if (schoolsMap.size >= 5) break;
-                const key = defSchool.toLowerCase();
-                if (!schoolsMap.has(key)) {
-                    schoolsMap.set(key, {
-                        schoolName: defSchool,
-                        score: null,
-                        link: null,
-                        snippet: '',
-                        sourceTitle: 'Default'
-                    });
+                const entry = lookupSchoolInDirectory(cand);
+                if (!entry) continue;
+                if (allowedLocations &&
+                    !allowedLocations.includes(entry.location.toLowerCase())) {
+                    continue;
                 }
+                const key = entry.canonical.toLowerCase();
+                if (schoolsMap.has(key)) continue;
+                schoolsMap.set(key, {
+                    schoolName: entry.canonical,
+                    location: entry.location,
+                    score: null,
+                    link: null,
+                    snippet: '',
+                    sourceTitle: 'default-region'
+                });
             }
         }
 
-        // Chuyển Map thành Array
+        // Nếu người dùng có chọn khu vực, áp bộ lọc khu vực cuối cùng
+        // để chắc chắn không lọt trường ngoài khu vực.
         let schools = Array.from(schoolsMap.values());
-        
-        // Loại bỏ trùng lặp lần cuối
-        const seen = new Set();
-        schools = schools.filter(s => {
-            const key = s.schoolName.toLowerCase();
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
+        schools = filterSchoolsByLocation(schools, location);
 
         // Sắp xếp theo điểm (cao nhất trước)
         schools.sort((a, b) => {
@@ -289,7 +417,7 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
         const topSchools = schools.slice(0, 5);
         console.log(`[SearchService] Tìm được ${topSchools.length} trường:`, topSchools.map(s => s.schoolName));
 
-        // Gọi SerpAPI để lấy điểm chuẩn 3 năm cho từng trường - từng trường từng năm để chính xác
+        // Gọi SerpAPI để lấy điểm chuẩn MỚI NHẤT (1 năm gần nhất) cho từng trường
         const result = {
             searchType: 'major_only',
             majorName: majorName,
@@ -299,36 +427,40 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
         };
 
         for (const school of topSchools) {
+            const normSchool = verification.normalizeSchool(school.schoolName, school.location);
             const schoolInfo = {
-                schoolName: school.schoolName,
-                location: location || 'Việt Nam',
-                benchmark2025: null,
-                benchmark2024: null,
-                benchmark2023: null,
-                benchmarkSource: 'serpapi'
+                schoolName: normSchool.canonical,
+                location: normSchool.location || location || 'Việt Nam',
+                schoolVerified: normSchool.verified,
+                benchmark: null,
+                benchmarkYear: null,
+                benchmarkSource: null,
+                benchmarkVerified: false
             };
 
             try {
-                // Lấy điểm chuẩn chính xác cho từng trường - 3 năm riêng biệt
-                const benchmarkData = await getBenchmarkFromSerpAPI(school.schoolName, majorName);
-                if (benchmarkData) {
-                    schoolInfo.benchmark2025 = benchmarkData.benchmark2025;
-                    schoolInfo.benchmark2024 = benchmarkData.benchmark2024;
-                    schoolInfo.benchmark2023 = benchmarkData.benchmark2023;
-                }
-                
-                // Nếu vẫn không có điểm nào, dùng score từ kết quả tìm trường
-                if (!schoolInfo.benchmark2025 && !schoolInfo.benchmark2024 && !schoolInfo.benchmark2023 && school.score) {
-                    schoolInfo.benchmark2025 = school.score.toFixed(1);
+                // Lấy điểm chuẩn MỚI NHẤT (đã ưu tiên cache crawler ở getBenchmarkFromSerpAPI)
+                const benchmarkData = await getBenchmarkFromSerpAPI(normSchool.canonical, majorName);
+                if (benchmarkData && benchmarkData.benchmark) {
+                    schoolInfo.benchmark = benchmarkData.benchmark;
+                    schoolInfo.benchmarkYear = benchmarkData.year;
+                    schoolInfo.benchmarkSource = benchmarkData.source;
+                    schoolInfo.benchmarkVerified = benchmarkData.verified;
                 }
             } catch (err) {
                 console.warn(`[SearchService] Lỗi lấy điểm cho ${school.schoolName}:`, err.message);
             }
 
+            // Bỏ những trường có tên ảo (không nằm trong whitelist)
+            if (!schoolInfo.schoolVerified) {
+                console.warn(`[SearchService] Bỏ trường không xác minh: ${school.schoolName}`);
+                continue;
+            }
+
             result.schools.push(schoolInfo);
-            
+
             // Delay để tránh rate limit
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         return result;
@@ -346,9 +478,12 @@ function extractBenchmarkFromSnippet(snippet) {
     
     const lines = snippet.split(/[.\n]/);
     const scores = [];
+    const scoreRegex = /\b(1[5-9]|2\d|30)(?:[.,]\d{1,2})?\b/g;
     
     for (const line of lines) {
-        const lineScores = line.match(/\b(\d{1,2}[.,]\d)\b/g);
+        // Loại bỏ các mẫu ngày tháng dạng dd/mm hoặc mm/dd trước để tránh nhận diện sai
+        const cleanedLine = line.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, '');
+        const lineScores = cleanedLine.match(scoreRegex);
         if (lineScores) {
             for (const s of lineScores) {
                 const score = parseFloat(s.replace(',', '.'));
@@ -366,6 +501,91 @@ function extractBenchmarkFromSnippet(snippet) {
 }
 
 /**
+ * Gợi ý danh sách ngành học tiêu biểu của trường bằng Gemini (khi SerpAPI lỗi hoặc hết quota)
+ */
+async function getTopMajorsFromGeminiFallback(schoolName, location = null) {
+    console.log(`[Gemini Fallback] Đang tìm các ngành hot của trường: ${schoolName}...`);
+    try {
+        const prompt = `Bạn là chuyên gia tư vấn tuyển sinh đại học tại Việt Nam.
+Người dùng muốn biết top 5 ngành học tiêu biểu nhất (hot nhất, điểm chuẩn cao hoặc nhiều người quan tâm) của trường: "${schoolName}".
+
+Hãy trả về dữ liệu dưới dạng JSON chuẩn xác theo cấu trúc sau:
+{
+  "majors": [
+    {
+      "majorName": "Tên ngành (ví dụ: Công nghệ thông tin)"
+    }
+  ]
+}
+
+Yêu cầu:
+1. Chỉ trả về chuỗi JSON thô, không kèm định dạng markdown (không có dấu \`\`\`json), không giải thích gì thêm.
+2. Các ngành phải thực tế nằm trong danh mục đào tạo của trường này.`;
+
+        const response = await model.generateContent(prompt);
+        const text = response.response.text().trim();
+        console.log('[Gemini Fallback] Top majors response từ Gemini:', text);
+        
+        const parsed = extractJsonFromText(text);
+        if (!parsed || !parsed.majors || !Array.isArray(parsed.majors)) {
+            throw new Error("Không thể phân tích danh sách ngành từ Gemini");
+        }
+        
+        const normSchool = verification.normalizeSchool(schoolName, location);
+        if (!normSchool.verified) {
+            console.warn(`[Gemini Fallback School] Trường "${schoolName}" không nằm trong whitelist.`);
+            return {
+                searchType: 'school_only',
+                schoolName: schoolName,
+                location: location || 'Việt Nam',
+                summary: `Không tìm thấy thông tin đáng tin cậy cho trường "${schoolName}".`,
+                topMajors: [],
+                schoolVerified: false
+            };
+        }
+
+        const result = {
+            searchType: 'school_only',
+            schoolName: normSchool.canonical,
+            schoolVerified: true,
+            location: normSchool.location || location || 'Việt Nam',
+            summary: `TOP ${parsed.majors.length} ngành đào tạo hot nhất tại ${normSchool.canonical} (Đề xuất bởi AI)`,
+            topMajors: []
+        };
+
+        for (const m of parsed.majors) {
+            const majorInfo = {
+                majorName: m.majorName,
+                benchmark: null,
+                benchmarkYear: null,
+                benchmarkSource: null,
+                benchmarkVerified: false,
+                schoolVerified: true
+            };
+
+            try {
+                const benchmarkData = await getBenchmarkFromSerpAPI(normSchool.canonical, m.majorName);
+                if (benchmarkData && benchmarkData.benchmark) {
+                    majorInfo.benchmark = benchmarkData.benchmark;
+                    majorInfo.benchmarkYear = benchmarkData.year;
+                    majorInfo.benchmarkSource = benchmarkData.source;
+                    majorInfo.benchmarkVerified = benchmarkData.verified;
+                }
+            } catch (err) {
+                console.warn(`[Gemini Fallback] Lỗi lấy điểm ngành ${m.majorName}:`, err.message);
+            }
+
+            result.topMajors.push(majorInfo);
+        }
+
+        return result;
+    } catch (error) {
+        console.error('[Gemini Fallback School] Thất bại hoàn toàn:', error.message);
+        throw error;
+    }
+}
+
+/**
  * Tìm kiếm trường học - Trả về TOP 5 ngành HOT của trường kèm điểm
  * Sử dụng SerpAPI để lấy thông tin
  */
@@ -379,49 +599,70 @@ async function searchSchoolWithSerpAPI(schoolName, location = null) {
         }
 
         // Gọi SerpAPI để lấy top ngành của trường
-        const topMajorsResult = await searchTopMajors(schoolName, 5);
-        
-        if (!topMajorsResult.success) {
-            throw new Error(topMajorsResult.error || 'Không tìm thấy thông tin');
+        let topMajorsResult;
+        try {
+            topMajorsResult = await searchTopMajors(schoolName, 5);
+            if (!topMajorsResult.success) {
+                throw new Error(topMajorsResult.error || 'Không tìm thấy thông tin');
+            }
+        } catch (apiErr) {
+            console.warn('[SearchService] SerpAPI tìm ngành hot thất bại:', apiErr.message);
+            // Kích hoạt Gemini Fallback để tìm ngành hot và điểm chuẩn
+            return await getTopMajorsFromGeminiFallback(schoolName, location);
         }
+
+        // Chuẩn hoá tên trường
+        const normSchool = verification.normalizeSchool(schoolName, location);
+        const finalSchoolName = normSchool.verified ? normSchool.canonical : schoolName;
+        const finalLocation = normSchool.verified ? (normSchool.location || location || 'Việt Nam') : (location || 'Việt Nam');
 
         const result = {
             searchType: 'school_only',
-            schoolName: schoolName,
-            location: location || 'Việt Nam',
-            summary: `TOP 5 ngành đào tạo hot nhất tại ${schoolName}`,
+            schoolName: finalSchoolName,
+            location: finalLocation,
+            summary: `TOP 5 ngành đào tạo hot nhất tại ${finalSchoolName}`,
             topMajors: []
         };
 
-        // Lấy điểm chuẩn 3 năm cho từng ngành
+        // Lấy điểm chuẩn MỚI NHẤT (1 năm gần nhất) cho từng ngành
         for (const major of topMajorsResult.majors) {
             const majorInfo = {
                 majorName: major.majorName,
-                benchmark2025: null,
-                benchmark2024: null,
-                benchmark2023: null,
-                benchmarkSource: 'serpapi'
+                benchmark: null,
+                benchmarkYear: null,
+                benchmarkSource: null,
+                benchmarkVerified: false,
+                schoolVerified: normSchool.verified
             };
 
             try {
-                const benchmarkData = await getBenchmarkFromSerpAPI(schoolName, major.majorName);
-                if (benchmarkData) {
-                    majorInfo.benchmark2025 = benchmarkData.benchmark2025;
-                    majorInfo.benchmark2024 = benchmarkData.benchmark2024;
-                    majorInfo.benchmark2023 = benchmarkData.benchmark2023;
+                const benchmarkData = await getBenchmarkFromSerpAPI(normSchool.canonical, major.majorName);
+                if (benchmarkData && benchmarkData.benchmark) {
+                    majorInfo.benchmark = benchmarkData.benchmark;
+                    majorInfo.benchmarkYear = benchmarkData.year;
+                    majorInfo.benchmarkSource = benchmarkData.source;
+                    majorInfo.benchmarkVerified = benchmarkData.verified;
                 } else if (major.score) {
-                    majorInfo.benchmark2025 = major.score.toFixed(1);
+                    const norm = verification.normalizeBenchmark(major.score, 'serpapi');
+                    if (norm.value !== null) {
+                        majorInfo.benchmark = norm.value.toFixed(1);
+                        majorInfo.benchmarkYear = 2025;
+                        majorInfo.benchmarkSource = 'serpapi';
+                        majorInfo.benchmarkVerified = false;
+                    }
                 }
             } catch (err) {
                 console.warn(`[SearchService] Lỗi lấy điểm ngành ${major.majorName}:`, err.message);
             }
 
             result.topMajors.push(majorInfo);
-            
+
             // Delay để tránh rate limit
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
+        result.schoolName = normSchool.canonical;
+        result.location = normSchool.location || location || 'Việt Nam';
         return result;
     } catch (error) {
         console.error('[SearchService] Lỗi searchSchoolWithSerpAPI:', error.message);
@@ -435,15 +676,15 @@ async function searchSchoolWithSerpAPI(schoolName, location = null) {
  * LUỒNG XỬ LÝ:
  * 
  * 1. CHỈ CÓ TÊN TRƯỜNG (industry/school trống):
- *    -> Trả thông tin trường + TOP 5 ngành HOT của trường kèm điểm chuẩn 3 năm
+ *    -> Trả thông tin trường + TOP 5 ngành HOT của trường kèm điểm chuẩn MỚI NHẤT (1 năm gần nhất)
  *    -> Sử dụng SerpAPI để tìm ngành và điểm
  * 
  * 2. CHỈ CÓ TÊN NGÀNH (school trống):
- *    -> Gợi ý danh sách trường đào tạo ngành này + điểm chuẩn 3 năm cho từng trường
+ *    -> Gợi ý danh sách trường đào tạo ngành này + điểm chuẩn MỚI NHẤT (1 năm gần nhất) cho từng trường
  *    -> Sử dụng SerpAPI để tìm trường và điểm
  * 
  * 3. CÓ CẢ TRƯỜNG VÀ NGÀNH:
- *    -> Trả thông tin trường + điểm chuẩn ngành cụ thể 3 năm
+ *    -> Trả thông tin trường + điểm chuẩn ngành cụ thể MỚI NHẤT (1 năm gần nhất)
  *    -> Sử dụng SerpAPI để lấy điểm
  */
 const searchCareerQuickly = async ({ mode, industry, school, position, location, age }) => {
@@ -470,29 +711,35 @@ const searchCareerQuickly = async ({ mode, industry, school, position, location,
         // ========== TRƯỜNG HỢP 3: CÓ CẢ TRƯỜNG VÀ NGÀNH ==========
         if (hasSchool && hasIndustry && mode === 'HOC') {
             console.log(`[SearchService] TRƯỜNG HỢP 3: Có cả trường và ngành - ${school} / ${industry}`);
-            
+
+            const normSchool = verification.normalizeSchool(school, location);
+            const finalSchoolName = normSchool.verified ? normSchool.canonical : school;
+            const finalLocation = normSchool.verified ? (normSchool.location || location || 'Việt Nam') : (location || 'Việt Nam');
+
             const result = {
                 searchType: 'school_and_major',
-                schoolName: school,
+                schoolName: finalSchoolName,
+                schoolVerified: normSchool.verified,
                 majorName: industry,
-                location: location || 'Việt Nam',
-                summary: `Thông tin trường ${school} và ngành ${industry}`,
+                location: finalLocation,
+                summary: `Thông tin trường ${finalSchoolName} và ngành ${industry}`,
                 majorInfo: {
                     majorName: industry,
-                    benchmark2025: null,
-                    benchmark2024: null,
-                    benchmark2023: null,
-                    benchmarkSource: 'serpapi'
+                    benchmark: null,
+                    benchmarkYear: null,
+                    benchmarkSource: null,
+                    benchmarkVerified: false
                 }
             };
 
-            // Gọi SerpAPI để lấy điểm chuẩn ngành của trường
+            // Gọi SerpAPI để lấy điểm chuẩn ngành của trường (đã ưu tiên cache crawler)
             try {
-                const benchmarkData = await getBenchmarkFromSerpAPI(school, industry);
-                if (benchmarkData) {
-                    result.majorInfo.benchmark2025 = benchmarkData.benchmark2025;
-                    result.majorInfo.benchmark2024 = benchmarkData.benchmark2024;
-                    result.majorInfo.benchmark2023 = benchmarkData.benchmark2023;
+                const benchmarkData = await getBenchmarkFromSerpAPI(normSchool.canonical, industry);
+                if (benchmarkData && benchmarkData.benchmark) {
+                    result.majorInfo.benchmark = benchmarkData.benchmark;
+                    result.majorInfo.benchmarkYear = benchmarkData.year;
+                    result.majorInfo.benchmarkSource = benchmarkData.source;
+                    result.majorInfo.benchmarkVerified = benchmarkData.verified;
                 }
             } catch (err) {
                 console.warn('[SearchService] Lỗi khi lấy điểm chuẩn:', err.message);
@@ -512,11 +759,22 @@ Người dùng muốn tìm hiểu về thị trường việc làm:
 - Khu vực mong muốn: "${location || 'Toàn quốc'}"
 - Tuổi: ${age || 20}
 
-NHIỆM VỤ: Gợi ý danh sách các công ty/doanh nghiệp tiêu biểu đang tuyển dụng.
+NHIỆM VỤ: Gợi ý danh sách CHÍNH XÁC 5 công ty/doanh nghiệp tiêu biểu đang tuyển dụng.
 
-YÊU CẦU:
+YÊU CẦU BẮT BUỘC:
 1. Ưu tiên công ty nằm trong khu vực "${location || 'Toàn quốc'}"
-2. Với mỗi công ty, bắt buộc trả về: companyName, location, description, positions, careerLink
+2. Với mỗi công ty, bắt buộc trả về:
+   - companyName: Tên đầy đủ của công ty
+   - location: Tỉnh/Thành phố
+   - description: Mô tả ngắn gọn
+   - positions: Danh sách vị trí đang tuyển
+   - website: Link trang chủ chính thức của công ty (VD: https://fpt.com.vn)
+   - careerLink: Link trang tuyển dụng (nếu biết, không có thì để null)
+
+QUAN TRỌNG:
+- CHỈ trả về ĐÚNG 5 công ty, không hơn không kém
+- Link website phải là URL thật của trang chủ công ty (https://...)
+- Tránh các trang trung gian, mạng xã hội
 
 Hãy trả về định dạng JSON chuẩn xác như sau:
 {
@@ -527,6 +785,7 @@ Hãy trả về định dạng JSON chuẩn xác như sau:
       "location": "Tỉnh/Thành phố",
       "description": "Mô tả ngắn gọn...",
       "positions": ["Vị trí 1", "Vị trí 2"],
+      "website": "https://example.com",
       "careerLink": null
     }
   ]
@@ -539,6 +798,18 @@ Chỉ trả về JSON, không kèm giải thích.`;
 
             if (!parsed) {
                 throw new Error("AI không trả về JSON hợp lệ");
+            }
+
+            // Giới hạn chỉ lấy tối đa 5 công ty và đảm bảo có trường website
+            if (parsed.companies && Array.isArray(parsed.companies)) {
+                parsed.companies = parsed.companies.slice(0, 5).map(c => ({
+                    companyName: c.companyName || '',
+                    location: c.location || '',
+                    description: c.description || '',
+                    positions: Array.isArray(c.positions) ? c.positions : [],
+                    website: c.website || null,
+                    careerLink: c.careerLink || null
+                }));
             }
 
             return parsed;

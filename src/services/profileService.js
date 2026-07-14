@@ -325,7 +325,19 @@ const getHistory = async (userId) => {
         const sessionsMap = {};
         for (const q of questions) {
             if (!sessionsMap[q.sessionId]) {
+                const dbHistory = historyMap[q.sessionId];
                 let mode = 'discovery';
+                if (dbHistory) {
+                    mode = dbHistory.testMode;
+                } else {
+                    if (q.testType === 'career') {
+                        const isTarget = q.testName && (q.testName.toLowerCase().includes('khảo sát nghề') || q.testName.toLowerCase().includes('mục tiêu') || q.testName.toLowerCase().includes('targeted'));
+                        mode = isTarget ? 'target' : 'discovery';
+                    } else {
+                        mode = q.testType;
+                    }
+                }
+
                 let title = q.testName || 'Bài khảo sát';
                 let subtitle = 'Khảo sát định hướng nghề nghiệp';
                 let details = 'Đã hoàn thành đánh giá hệ thống.';
@@ -333,63 +345,54 @@ const getHistory = async (userId) => {
                 let conclusionReason = 'Hệ thống AI đã tổng hợp các tham số từ câu trả lời của bạn.';
                 let roadmap = [];
 
-                if (q.testType === 'career') {
-                    const isTarget = q.testName && q.testName.toLowerCase().includes('khảo sát nghề');
-                    const isStudent = profile ? isStudyingHighSchool(profile.educationLevel) : false;
-                    if (isTarget) {
-                        mode = 'target';
-                        title = 'Mục Tiêu (Target)';
-                        const targetCareer = q.testName.replace(/Khảo sát nghề/i, '').trim();
-                        subtitle = `Mục tiêu: ${targetCareer}`;
-                        details = `Đánh giá mức độ phù hợp với nghề ${targetCareer}.`;
-                        recommendedCareer = targetCareer;
-                        
-                        // Lọc theo sessionId để tránh nhầm lẫn giữa các bài test
-                        const sessionLam = targetLamList.filter(item => item.sessionId === q.sessionId);
-                        const sessionHoc = targetHocList.filter(item => item.sessionId === q.sessionId);
-                        
-                        if (sessionLam.length > 0) {
-                            conclusionReason = `Công ty tiêu biểu: ` + sessionLam.map(c => c.companyName).join(', ');
-                        } else if (sessionHoc.length > 0) {
-                            conclusionReason = `Trường đào tạo đề xuất: ` + sessionHoc.map(s => s.schoolName).join(', ');
-                        }
-                    } else {
-                        mode = 'discovery';
-                        title = 'Khám Phá (Discovery)';
-                        subtitle = 'Khám phá nghề nghiệp phù hợp';
-                        details = 'Bài khảo sát định hướng và gợi ý lĩnh vực phù hợp.';
-                        
-                        // Lọc theo sessionId
-                        const sessionHoc = discHocList.filter(item => item.sessionId === q.sessionId);
-                        const sessionLam = discLamList.filter(item => item.sessionId === q.sessionId);
-                        
-                        if (sessionHoc.length > 0) {
-                            const uniqueCareers = [...new Set(sessionHoc.map(c => c.careerName))];
-                            recommendedCareer = uniqueCareers.join(', ');
-                            subtitle = `Gợi ý: ${recommendedCareer}`;
-                            conclusionReason = `Các trường đề xuất: ` + [...new Set(sessionHoc.map(s => s.schoolName))].join(', ');
-                        } else if (sessionLam.length > 0) {
-                            const uniqueCareers = [...new Set(sessionLam.map(c => c.careerName))];
-                            recommendedCareer = uniqueCareers.join(', ');
-                            subtitle = `Gợi ý: ${recommendedCareer}`;
-                            conclusionReason = `Ngành nghề đề xuất: ` + recommendedCareer;
-                        }
+                if (mode === 'target') {
+                    title = 'Mục Tiêu (Target)';
+                    const targetCareer = q.testName ? q.testName.replace(/Khảo sát nghề/i, '').trim() : '';
+                    subtitle = `Mục tiêu: ${targetCareer}`;
+                    details = `Đánh giá mức độ phù hợp với nghề ${targetCareer}.`;
+                    recommendedCareer = targetCareer;
+                    
+                    const sessionLam = targetLamList.filter(item => item.sessionId === q.sessionId);
+                    const sessionHoc = targetHocList.filter(item => item.sessionId === q.sessionId);
+                    
+                    if (sessionLam.length > 0) {
+                        conclusionReason = `Công ty tiêu biểu: ` + sessionLam.map(c => c.companyName).join(', ');
+                    } else if (sessionHoc.length > 0) {
+                        conclusionReason = `Trường đào tạo đề xuất: ` + sessionHoc.map(s => s.schoolName).join(', ');
+                    }
+                } else if (mode === 'discovery') {
+                    title = 'Khám Phá (Discovery)';
+                    subtitle = 'Khám phá nghề nghiệp phù hợp';
+                    details = 'Bài khảo sát định hướng và gợi ý lĩnh vực phù hợp.';
+                    
+                    const sessionHoc = discHocList.filter(item => item.sessionId === q.sessionId);
+                    const sessionLam = discLamList.filter(item => item.sessionId === q.sessionId);
+                    
+                    if (sessionHoc.length > 0) {
+                        const uniqueCareers = [...new Set(sessionHoc.map(c => c.careerName))];
+                        recommendedCareer = uniqueCareers.join(', ');
+                        subtitle = `Gợi ý: ${recommendedCareer}`;
+                        conclusionReason = `Các trường đề xuất: ` + [...new Set(sessionHoc.map(s => s.schoolName))].join(', ');
+                    } else if (sessionLam.length > 0) {
+                        const uniqueCareers = [...new Set(sessionLam.map(c => c.careerName))];
+                        recommendedCareer = uniqueCareers.join(', ');
+                        subtitle = `Gợi ý: ${recommendedCareer}`;
+                        conclusionReason = `Ngành nghề đề xuất: ` + recommendedCareer;
                     }
                 } else {
-                    mode = q.testType; // holland, personality, cognitive, values
-                    if (q.testType === 'holland') {
+                    if (mode === 'holland') {
                         title = 'Sở Thích Holland';
                         subtitle = 'Bài trắc nghiệm RIASEC';
                         details = 'Xác định nhóm sở thích nghề nghiệp trội.';
-                    } else if (q.testType === 'personality') {
+                    } else if (mode === 'personality') {
                         title = 'Tính Cách Big 5';
                         subtitle = 'Đặc điểm hành vi & MBTI';
                         details = 'Phân tích tính cách chủ đạo và xu hướng.';
-                    } else if (q.testType === 'cognitive') {
+                    } else if (mode === 'cognitive') {
                         title = 'Năng Lực Nhận Thức';
                         subtitle = 'Logic, số học, ngôn ngữ';
                         details = 'Đánh giá khả năng tư duy giải quyết vấn đề.';
-                    } else if (q.testType === 'values') {
+                    } else if (mode === 'values') {
                         title = 'Hệ Giá Trị Cá Nhân';
                         subtitle = 'Động lực nghề nghiệp';
                         details = 'Xác định các giá trị cốt lõi thúc đẩy sự nghiệp.';
@@ -397,13 +400,27 @@ const getHistory = async (userId) => {
                 }
 
                 let relevanceScore = null;
-                const dbHistory = historyMap[q.sessionId];
-                const isStudent = profile ? isStudyingHighSchool(profile.educationLevel) : false;
+                let summary = '';
+                let strengths = [];
+                let weaknesses = [];
+                let advice = '';
+
                 if (dbHistory) {
-                    mode = dbHistory.testMode;
                     if (dbHistory.score != null) {
                         relevanceScore = dbHistory.score;
                     }
+                    summary = dbHistory.summary || '';
+                    try {
+                        strengths = dbHistory.strengths ? JSON.parse(dbHistory.strengths) : [];
+                    } catch (e) {
+                        strengths = [];
+                    }
+                    try {
+                        weaknesses = dbHistory.weaknesses ? JSON.parse(dbHistory.weaknesses) : [];
+                    } catch (e) {
+                        weaknesses = [];
+                    }
+                    advice = dbHistory.advice || '';
                 }
 
                 // Xây dựng danh sách trường học và công ty phù hợp
@@ -465,6 +482,7 @@ const getHistory = async (userId) => {
                     ];
                 }
 
+                const isStudent = profile ? isStudyingHighSchool(profile.educationLevel) : false;
                 const meta = generateCareerMetadata(recommendedCareer);
 
                 sessionsMap[q.sessionId] = {
@@ -484,6 +502,10 @@ const getHistory = async (userId) => {
                     matchingSchools: matchingSchools,
                     marketSalaries: meta.salaries,
                     hiringCompanies: hiringCompanies,
+                    summary,
+                    strengths,
+                    weaknesses,
+                    advice,
                     questions: []
                 };
             }
@@ -516,7 +538,25 @@ const getHistory = async (userId) => {
                     let efficacyScore = 0, efficacyMax = 0;
                     
                     for (let i = 0; i < sessionQuestions.length; i++) {
-                        const ansVal = parseInt(sessionQuestions[i].userAnswer, 10) || 3;
+                        const sq = sessionQuestions[i];
+                        let ansVal = parseInt(sq.userAnswer, 10);
+                        if (isNaN(ansVal)) {
+                            ansVal = 3; // default fallback
+                            if (sq.options) {
+                                let opts = [];
+                                if (typeof sq.options === 'string') {
+                                    try { opts = JSON.parse(sq.options); } catch (e) {}
+                                } else if (Array.isArray(sq.options)) {
+                                    opts = sq.options;
+                                }
+                                if (Array.isArray(opts)) {
+                                    const foundOpt = opts.find(o => o && o.text === sq.userAnswer);
+                                    if (foundOpt && foundOpt.weight !== undefined) {
+                                        ansVal = parseInt(foundOpt.weight, 10) || 3;
+                                    }
+                                }
+                            }
+                        }
                         if (i < 5) {
                             interestScore += ansVal;
                             interestMax += 5;
