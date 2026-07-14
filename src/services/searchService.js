@@ -3,75 +3,78 @@ const { getGenerativeModelWithFallback, extractJsonFromText } = require("./gemin
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash",
     generationConfig: { 
-        temperature: 0.3,
-        responseMimeType: "application/json"
-    }
+        temperature: 0.3
+    },
+    tools: [{ googleSearch: {} }]
 });
 
 /**
- * Tìm hiểu nhanh về 1 ngành nghề
- * @param {string} careerName - Tên ngành nghề
- * @param {string} location - Khu vực mong muốn
- * @param {number} age - Độ tuổi
+ * Tìm hiểu nhanh về ngành nghề / trường học (cho màn hình Quick Explore)
+ * @param {object} params - Tham số đầu vào
+ * @param {string} params.mode - Chế độ 'HOC' hoặc 'LAM'
+ * @param {string} params.industry - Ngành học / ngành nghề quan tâm
+ * @param {string} params.school - Tên trường đại học (chỉ cho HOC)
+ * @param {string} params.position - Vị trí công việc mong muốn
+ * @param {string} params.location - Địa điểm / khu vực (chỉ cho LAM)
+ * @param {number} params.age - Độ tuổi người dùng
  */
-const searchCareerQuickly = async (careerName, location, age) => {
+const searchCareerQuickly = async ({ mode, industry, school, position, location, age }) => {
     try {
-        if (!careerName || !location || age == null) {
-            throw new Error("Thiếu tham số careerName, location hoặc age");
-        }
-
-        const isHighSchool = Number(age) <= 18;
         let prompt = '';
 
-        if (isHighSchool) {
-            prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc dành cho học sinh trung học phổ thông. 
-Người dùng muốn tìm hiểu nhanh về ngành nghề: "${careerName}" tại khu vực: "${location}".
-Người dùng hiện tại ${age} tuổi (thuộc nhóm học sinh THPT).
+        if (mode === 'HOC') {
+            prompt = `Bạn là chuyên gia tư vấn hướng nghiệp xuất sắc tại Việt Nam.
+Người dùng muốn tìm hiểu về:
+- Ngành học quan tâm: "${industry || 'Bất kỳ'}"
+- Trường quan tâm: "${school || 'Bất kỳ'}"
+- Vị trí công việc mong muốn: "${position || 'Bất kỳ'}"
+Người dùng hiện tại ${age || 18} tuổi.
+
+NHIỆM VỤ: Gợi ý danh sách các trường Đại học/Cao đẳng tại Việt Nam phù hợp với tiêu chí trên.
 
 YÊU CẦU:
-1. Hãy cung cấp thông tin tóm tắt ngắn gọn về ngành nghề "${careerName}".
-2. Cung cấp danh sách các trường Đại học/Cao đẳng hàng đầu có đào tạo ngành đó tại khu vực "${location}" (tối thiểu 3-5 trường nếu có).
-3. Với mỗi trường, bắt buộc trả về: tên trường, mô tả ngắn, thang điểm chuẩn ngành đó trong 3 năm gần nhất, link trang web chính thức và link tuyển sinh của trường.
+1. Hãy cung cấp thông tin tóm tắt ngắn gọn về ngành học/lĩnh vực "${industry || position || 'này'}" và triển vọng học tập.
+2. Cung cấp danh sách các trường Đại học/Cao đẳng tốt đào tạo ngành này (từ 3-5 trường). Nếu người dùng có nhập cụ thể tên trường "${school}", bắt buộc trường này phải đứng đầu danh sách.
+3. Với mỗi trường, bắt buộc trả về: tên trường (schoolName), mô tả ngắn gọn chất lượng đào tạo (description), điểm chuẩn ngành đó trong 3 năm gần nhất 2025, 2024, 2023 (benchmarkScores - BẮT BUỘC dùng thang điểm tốt nghiệp THPT Quốc gia tối đa là 30.0; tự động quy đổi tương đương nếu trường dùng thang điểm khác như thang 100), link trang web chính thức (officialLink) và link cổng tuyển sinh của trường (admissionLink).
 
 Hãy trả về định dạng JSON chuẩn xác như sau:
 {
-  "ageGroup": "THPT",
-  "career": "${careerName}",
-  "location": "${location}",
-  "summary": "Tóm tắt ngắn gọn về tiềm năng và đặc thù của ngành nghề này đối với học sinh THPT...",
+  "summary": "Tóm tắt ngắn gọn về tiềm năng và đặc thù của ngành học này đối với học sinh...",
   "schools": [
     {
       "schoolName": "Tên trường Đại học/Cao đẳng 1",
       "description": "Mô tả ngắn gọn về trường và chất lượng đào tạo ngành này...",
-      "benchmarkScores": "Thang điểm chuẩn 3 năm gần nhất (Ví dụ: 2023: 26.5 điểm, 2024: 27.2 điểm, 2025: 27.5 điểm)",
-      "officialLink": "URL trang web chính thức của trường",
-      "admissionLink": "URL cổng tuyển sinh chính thức của trường"
+      "benchmarkScores": "2025: 26.5 - 2024: 25.0 - 2023: 24.0",
+      "officialLink": "https://...",
+      "admissionLink": "https://..."
     }
   ]
 }
 Chỉ trả về JSON, không kèm bất kỳ markdown hay text giải thích nào khác.`;
         } else {
-            prompt = `Bạn là chuyên gia tư vấn hướng nghiệp và nhân sự xuất sắc.
-Người dùng muốn tìm hiểu nhanh về ngành nghề: "${careerName}" tại khu vực: "${location}".
-Người dùng hiện tại ${age} tuổi (thuộc nhóm sinh viên/người đi làm).
+            prompt = `Bạn là chuyên gia tư vấn hướng nghiệp và nhân sự xuất sắc tại Việt Nam.
+Người dùng muốn tìm hiểu về thị trường việc làm:
+- Ngành nghề quan tâm: "${industry || 'Bất kỳ'}"
+- Vị trí công việc: "${position || 'Bất kỳ'}"
+- Khu vực mong muốn: "${location || 'Toàn quốc'}"
+Người dùng hiện tại ${age || 20} tuổi.
+
+NHIỆM VỤ: Gợi ý danh sách các công ty/doanh nghiệp tiêu biểu đang tuyển dụng ngành/vị trí này.
 
 YÊU CẦU:
-1. Hãy cung cấp thông tin tóm tắt ngắn gọn về ngành nghề "${careerName}" đối với người chuẩn bị ra trường hoặc đi làm.
-2. Cung cấp danh sách các công ty/doanh nghiệp tiêu biểu hoặc đáng ứng tuyển đang có nhu cầu tuyển dụng nhiều về ngành nghề đó tại khu vực "${location}" (tối thiểu 3-5 công ty nếu có).
-3. Với mỗi công ty, bắt buộc trả về: tên công ty, mô tả ngắn gọn về lĩnh vực hoạt động/quy mô, các vị trí tuyển dụng phổ biến và đường link tuyển sinh/tuyển dụng hoặc trang web chính thức của công ty.
+1. Hãy cung cấp thông tin tóm tắt ngắn gọn về nhu cầu tuyển dụng và xu hướng việc làm của ngành/vị trí này tại khu vực "${location || 'Việt Nam'}".
+2. Cung cấp danh sách các công ty/doanh nghiệp tiêu biểu đang có nhu cầu tuyển dụng (từ 3-5 công ty).
+3. Với mỗi công ty, bắt buộc trả về: tên công ty (companyName), mô tả ngắn gọn về lĩnh vực/quy mô (description), các vị trí công việc thường tuyển (positions - dạng danh sách String, ví dụ ["Lập trình viên", "Kỹ sư"]), đường link tuyển dụng hoặc trang web chính thức (careerLink).
 
 Hãy trả về định dạng JSON chuẩn xác như sau:
 {
-  "ageGroup": "Đại học/Đi làm",
-  "career": "${careerName}",
-  "location": "${location}",
-  "summary": "Tóm tắt ngắn gọn về nhu cầu tuyển dụng và xu hướng việc làm của ngành nghề này...",
+  "summary": "Tóm tắt ngắn gọn về nhu cầu tuyển dụng và xu hướng việc làm...",
   "companies": [
     {
-      "companyName": "Tên công ty/doanh nghiệp 1",
-      "description": "Mô tả ngắn gọn về công ty, quy mô và môi trường làm việc...",
-      "positions": "Các vị trí công việc thường tuyển (Ví dụ: Lập trình viên Web, Kỹ sư Hệ thống)",
-      "careerLink": "Đường link trang tuyển dụng hoặc trang chủ của công ty"
+      "companyName": "Tên công ty 1",
+      "description": "Mô tả ngắn gọn...",
+      "positions": ["Vị trí 1", "Vị trí 2"],
+      "careerLink": "https://..."
     }
   ]
 }

@@ -64,7 +64,7 @@ function classifyQuotaError(error) {
  * - Có exponential backoff giữa các lần retry.
  * - Thử lần lượt các model trong MODEL_CANDIDATES.
  */
-function getGenerativeModelWithFallback({ model: defaultModelName, generationConfig = {} }) {
+function getGenerativeModelWithFallback({ model: defaultModelName, generationConfig = {}, tools }) {
     return {
         generateContent: async function (prompt, retries = 3, delayMs = 1500) {
             let lastError = null;
@@ -80,7 +80,8 @@ function getGenerativeModelWithFallback({ model: defaultModelName, generationCon
                         temperature: 0.5,
                         maxOutputTokens: 8192,
                         ...generationConfig
-                    }
+                    },
+                    tools: tools
                 });
 
                 for (let attempt = 1; attempt <= retries; attempt++) {

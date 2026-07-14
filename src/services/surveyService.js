@@ -10,10 +10,10 @@ const model = getGenerativeModelWithFallback({
         // (thoughtsTokenCount), nen can maxOutputTokens rat lon de phan JSON
         // tra ve khong bi cat cut. 16384 cho 15 cau hoi Likert + SCCT.
         maxOutputTokens: 16384,
-        responseMimeType: "application/json",
         // Chi dinh khong su dung thinking de tiet kiem token cho output
         thinkingConfig: { thinkingBudget: 0 }
-    }
+    },
+    tools: [{ googleSearch: {} }]
 });
 
 const isStudyingHighSchool = (education) => {
@@ -333,7 +333,7 @@ ${JSON.stringify(parsedAnswers)}
 
 YÊU CẦU QUAN TRỌNG VỀ ĐÁNH GIÁ VÀ HƯỚNG NGHIỆP:
 1. LƯU Ý: Không chấm điểm tương thích hay đánh giá Passed/Failed vì đây là bài khảo sát tự khám phá định hướng tổng quan cho học sinh THPT. Do đó, JSON trả về KHÔNG chứa các trường "score" và "status".
-2. Đề xuất các ngành học phù hợp, với mỗi ngành đề xuất các trường học có đào tạo ngành đó tại Việt Nam, kèm website chính thức, điểm chuẩn tuyển sinh các năm 2025, 2024, 2023 và link tuyển sinh.
+2. Đề xuất các ngành học phù hợp, với mỗi ngành đề xuất các trường học có đào tạo ngành đó tại Việt Nam, kèm website chính thức, điểm chuẩn tuyển sinh các năm 2025, 2024, 2023 (BẮT BUỘC dùng thang điểm tốt nghiệp THPT Quốc gia tối đa là 30.0; tự động quy đổi nếu trường dùng thang điểm khác như thang 100 của ĐH Bách khoa TP.HCM) và link tuyển sinh.
 
 Hãy thực hiện đánh giá định hướng và trả về cấu trúc JSON chính xác như sau:
 {
@@ -440,7 +440,7 @@ YÊU CẦU QUAN TRỌNG VỀ ĐÁNH GIÁ VÀ HƯỚNG NGHIỆP:
 1. Đưa ra điểm đánh giá phù hợp trên thang điểm từ 1 đến 5 (số thực, ví dụ: 4.25).
 2. Đưa ra đánh giá tổng quát về mức độ phù hợp của học sinh với ngành học mục tiêu.
 3. Cung cấp thông tin các trường Đại học/Cao đẳng đào tạo ngành "${targetCareer}" thuộc khu vực mong muốn/sinh sống của học sinh (${userContext.location || 'Việt Nam'}).
-4. Đối với mỗi trường đề xuất, phải cung cấp đầy đủ thông tin: website trường (link trường), điểm chuẩn (điểm tuyển sinh) cho ngành "${targetCareer}" trong 3 năm gần nhất 2025, 2024, 2023 (dưới dạng số thực hoặc null), và link cổng tuyển sinh chính thức của trường.
+4. Đối với mỗi trường đề xuất, phải cung cấp đầy đủ thông tin: website trường (link trường), điểm chuẩn (điểm tuyển sinh) cho ngành "${targetCareer}" trong 3 năm gần nhất 2025, 2024, 2023 (dưới dạng số thực hoặc null, BẮT BUỘC sử dụng thang điểm tốt nghiệp THPT Quốc gia tối đa là 30.0; tự động quy đổi tương đương nếu trường dùng thang điểm khác như thang 100), và link cổng tuyển sinh chính thức của trường.
 5. Nếu có thông tin điểm số học tập của học sinh, hãy đưa ra đánh giá chi tiết về mức độ phù hợp của điểm số với điểm chuẩn của từng trường đề xuất trong trường "scoreEvaluation".
 
 Hãy thực hiện đánh giá tương thích và trả về cấu trúc JSON chính xác như sau:

@@ -5,7 +5,8 @@ const model = getGenerativeModelWithFallback({
     generationConfig: {
         temperature: 0.5, // Giảm randomness để response nhanh hơn
         maxOutputTokens: 4096, // Tăng giới hạn output để tránh bị cắt cụt JSON
-    }
+    },
+    tools: [{ googleSearch: {} }]
 });
 
 // Simple cache để tránh gọi API trùng lặp
@@ -244,8 +245,9 @@ QUY TẮC BẮT BUỘC:
 1. Chỉ trả về JSON hợp lệ, KHÔNG kèm markdown, KHÔNG giải thích thêm.
 2. Cung cấp ĐÚNG từ 4 đến 6 trường.
 3. Mỗi trường PHẢI có đầy đủ: schoolName, major (tên ngành), location (tỉnh/thành phố), description (mô tả ngắn 1-2 câu về điểm mạnh đào tạo ngành này), benchmarks (chuỗi mô tả điểm chuẩn 3 năm gần nhất 2025/2024/2023, ví dụ "2025: 26.5 - 2024: 25.0 - 2023: 24.0"), officialLink (URL trang chủ), admissionLink (URL cổng tuyển sinh).
-4. Nếu không chắc chắn điểm chuẩn chính xác thì đặt "Đang cập nhật".
-5. BẮT BUỘC trả về JSON theo cấu trúc:
+4. QUY TẮC THANG ĐIỂM 30: Điểm chuẩn benchmarks PHẢI ở thang điểm tốt nghiệp THPT Quốc gia truyền thống (tối đa là 30.0). Tuyệt đối không dùng thang điểm 100 hay thang khác. Nếu trường dùng thang 100 (như Bách khoa TP.HCM) hoặc nhân hệ số (thang 40), hãy tự động quy đổi tương đương về thang điểm 30 (ví dụ 80/100 -> quy đổi thành điểm thi THPT tương ứng từ 24.0 đến 28.0).
+5. Nếu không chắc chắn điểm chuẩn chính xác thì đặt "Đang cập nhật".
+6. BẮT BUỘC trả về JSON theo cấu trúc:
 {
   "summary": "Tóm tắt ngắn 2-3 câu về ngành ${career} và triển vọng học tập tại Việt Nam.",
   "schools": [
@@ -478,6 +480,9 @@ async function evaluateCareerTest(testName, questions, userContext = {}) {
 }`;
 
         const prompt = `Đánh giá phù hợp nghề cho "${testName}".
+
+QUY TẮC BẮT BUỘC VỀ THANG ĐIỂM:
+- Điểm chuẩn (benchmarkScores) của các trường đại học/cao đẳng đề xuất PHẢI ở thang điểm tốt nghiệp THPT Quốc gia truyền thống (tối đa là 30.0). Tuyệt đối không dùng thang điểm 100 (như Bách Khoa TP.HCM) hay thang khác. Nếu trường dùng thang khác, hãy tự động quy đổi tương đương về thang điểm 30.
 
 Profile: ${profile || "N/A"}
 
