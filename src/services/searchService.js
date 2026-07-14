@@ -1,3 +1,4 @@
+const axios = require('axios');
 const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
 const { searchBenchmarkByYears, searchTopMajors, searchUniversityBenchmark } = require("./serpapiService");
 
@@ -97,7 +98,7 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
 
         // Query tìm kiếm điểm chuẩn ngành
         const locationQuery = location ? ` ${location}` : '';
-        const query = `điểm chuẩn ngành ${majorName}${locationQuery} 2025`;
+        const query = `điểm chuẩn ngành ${majorName}${locationQuery} 2025 các trường đại học`;
 
         console.log(`[SearchService] Query SerpAPI: "${query}"`);
         
@@ -106,7 +107,7 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
                 engine: 'google',
                 q: query,
                 api_key: apiKey,
-                num: 15,
+                num: 20,
                 gl: 'vn',
                 hl: 'vi'
             },
@@ -115,44 +116,159 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
 
         const organicResults = response.data.organic_results || [];
         
-        // Trích xuất trường từ kết quả tìm kiếm
+        // Trích xuất trường từ kết quả tìm kiếm - dùng regex để bắt nhiều pattern
         const schoolsMap = new Map();
         
+        // Pattern regex nhận diện tên trường đa dạng hơn
+        const schoolPatterns = [
+            /(Đại học|DH|ĐH)\s+(Bách Khoa|Quốc gia|Kinh tế|Ngoại thương|FPT|RMIT|Y Hà Nội|Sư phạm|KHTN|Khoa học Tự nhiên|Công nghệ|Cần Thơ|Huế|Bình Dương|Duy Tân|Đông Á|Mở|Tôn Đức Thắng|Hoà Bình|Văn Lang|HUTECH|Nguyễn Tất Thành|Sài Gòn|Ngoại ngữ|Công nghiệp|Giao thông vận tải|Xây dựng|Kiến trúc|Luật|Hà Nội|HCMUS|HCMUT|Phenikaa|FULLBRIGHT|HANU)/gi,
+            /(Học viện|HV)\s+(Ngân hàng|Tài chính|Công nghệ Bưu chính Viễn thông|Quân Y|An ninh Nhân dân|Quản lý Giáo dục)/gi,
+            /Trường\s+(Đại học|Cao đẳng)\s+([A-ZÀ-Ỹ][a-zà-ỹ]+(?:\s+[A-ZÀ-Ỹ][a-zà-ỹ]+)*)/g
+        ];
+
         // Danh sách trường phổ biến để nhận diện
         const commonUniversities = [
             'Đại học Bách Khoa', 'Đại học Quốc gia', 'Đại học Kinh tế', 'Đại học Ngoại thương',
             'Đại học FPT', 'Đại học RMIT', 'Đại học Y Hà Nội', 'Đại học Sư phạm',
             'Đại học KHTN', 'Học viện Ngân hàng', 'Học viện Tài chính', 'Đại học Luật',
             'Đại học Kiến trúc', 'Đại học Mỹ thuật', 'Đại học Y dược', 'Đại học Duy Tân',
-            'Đại học Đông Á', 'Đại học Bình Dương', 'Đại học Cần Thơ', 'Đại học Huế'
+            'Đại học Đông Á', 'Đại học Bình Dương', 'Đại học Cần Thơ', 'Đại học Huế',
+            'Đại học Tôn Đức Thắng', 'Đại học Mở', 'Đại học Hoà Bình', 'Đại học Văn Lang',
+            'Đại học HUTECH', 'Đại học Nguyễn Tất Thành', 'Đại học Sài Gòn',
+            'Đại học Ngoại ngữ', 'Đại học Công nghiệp', 'Đại học Giao thông vận tải',
+            'Đại học Xây dựng', 'Đại học Phenikaa', 'Đại học Hà Nội'
         ];
 
-        for (const result of organicResults) {
-            const title = result.title || '';
-            const snippet = result.snippet || '';
+        // Hàm tìm trường trong text
+        const findSchools = (text) => {
+            const found = [];
+            const lowerText = text.toLowerCase();
             
-            // Tìm trường trong title
+            // Tìm theo danh sách phổ biến trước
             for (const uni of commonUniversities) {
-                if (title.toLowerCase().includes(uni.toLowerCase())) {
-                    if (!schoolsMap.has(uni)) {
-                        const score = extractBenchmarkFromSnippet(snippet);
-                        schoolsMap.set(uni, {
-                            schoolName: uni,
-                            score: score,
-                            link: result.link,
-                            snippet: snippet,
-                            sourceTitle: title
-                        });
+                if (lowerText.includes(uni.toLowerCase())) {
+                    found.push(uni);
+                }
+            }
+            
+            // Tìm theo pattern
+            for (const pattern of schoolPatterns) {
+                const matches = text.matchAll(pattern);
+                for (const match of matches) {
+                    found.push(match[0].trim());
+                }
+            }
+            
+            return found;
+        };
+
+        // Gộp tất cả text từ các kết quả để tìm trường
+        const allText = organicResults.map(r => `${r.title || ''} ${r.snippet || ''}`).join('\n');
+        const foundSchools = findSchools(allText);
+        
+        // Thêm các trường tìm được vào map
+        for (const schoolName of foundSchools) {
+            const key = schoolName.toLowerCase();
+            if (!schoolsMap.has(key)) {
+                // Tìm điểm trong snippet liên quan
+                let bestScore = null;
+                for (const result of organicResults) {
+                    const text = `${result.title || ''} ${result.snippet || ''}`;
+                    if (text.toLowerCase().includes(schoolName.toLowerCase())) {
+                        const score = extractBenchmarkFromSnippet(result.snippet || '');
+                        if (score !== null) {
+                            bestScore = score;
+                            break;
+                        }
                     }
-                    break;
+                }
+                
+                schoolsMap.set(key, {
+                    schoolName: schoolName,
+                    score: bestScore,
+                    link: null,
+                    snippet: '',
+                    sourceTitle: ''
+                });
+            }
+        }
+
+        // Nếu không tìm được trường nào, dùng query khác để tìm danh sách trường
+        if (schoolsMap.size < 3) {
+            console.log('[SearchService] Tìm thêm trường với query khác...');
+            const query2 = `top 5 trường đào tạo ${majorName} tốt nhất Việt Nam`;
+            
+            const response2 = await axios.get('https://serpapi.com/search', {
+                params: {
+                    engine: 'google',
+                    q: query2,
+                    api_key: apiKey,
+                    num: 15,
+                    gl: 'vn',
+                    hl: 'vi'
+                },
+                timeout: 30000
+            });
+            
+            const organicResults2 = response2.data.organic_results || [];
+            const allText2 = organicResults2.map(r => `${r.title || ''} ${r.snippet || ''}`).join('\n');
+            const foundSchools2 = findSchools(allText2);
+            
+            for (const schoolName of foundSchools2) {
+                const key = schoolName.toLowerCase();
+                if (!schoolsMap.has(key)) {
+                    schoolsMap.set(key, {
+                        schoolName: schoolName,
+                        score: null,
+                        link: null,
+                        snippet: '',
+                        sourceTitle: ''
+                    });
                 }
             }
         }
 
-        // Chuyển Map thành Array và sắp xếp theo điểm
+        // Nếu vẫn không đủ, thêm trường phổ biến theo ngành
+        if (schoolsMap.size < 5) {
+            const majorLower = majorName.toLowerCase();
+            const defaultSchoolsByMajor = {
+                'công nghệ thông tin': ['Đại học Bách Khoa', 'Đại học FPT', 'Đại học Quốc gia', 'Đại học Công nghệ', 'Đại học CNTT'],
+                'khoa học máy tính': ['Đại học Bách Khoa', 'Đại học Quốc gia', 'Đại học FPT', 'Đại học CNTT', 'Đại học Khoa học Tự nhiên'],
+                'y khoa': ['Đại học Y Hà Nội', 'Đại học Y Dược', 'Đại học Y khoa Phạm Ngọc Thạch', 'Đại học Y Dược Cần Thơ', 'Đại học Huế'],
+                'kinh tế': ['Đại học Kinh tế Quốc dân', 'Đại học Ngoại thương', 'Đại học Kinh tế TP.HCM', 'Học viện Tài chính', 'Học viện Ngân hàng'],
+                'quản trị kinh doanh': ['Đại học Kinh tế Quốc dân', 'Đại học Ngoại thương', 'Đại học FPT', 'Đại học RMIT', 'Đại học Hoà Bình'],
+                'kế toán': ['Đại học Kinh tế Quốc dân', 'Học viện Tài chính', 'Đại học Ngoại thương', 'Học viện Ngân hàng', 'Đại học Kinh tế TP.HCM'],
+                'luật': ['Đại học Luật Hà Nội', 'Đại học Luật TP.HCM', 'Đại học Kinh tế - Luật', 'Đại học Mở', 'Đại học Duy Tân'],
+                'sư phạm': ['Đại học Sư phạm Hà Nội', 'Đại học Sư phạm TP.HCM', 'Đại học Sư phạm Huế', 'Đại học Sư phạm Đà Nẵng', 'Đại học Cần Thơ']
+            };
+            
+            const defaults = defaultSchoolsByMajor[majorLower] || [
+                'Đại học Bách Khoa',
+                'Đại học Quốc gia Hà Nội',
+                'Đại học Quốc gia TP.HCM',
+                'Đại học FPT',
+                'Đại học Cần Thơ'
+            ];
+            
+            for (const defSchool of defaults) {
+                if (schoolsMap.size >= 5) break;
+                const key = defSchool.toLowerCase();
+                if (!schoolsMap.has(key)) {
+                    schoolsMap.set(key, {
+                        schoolName: defSchool,
+                        score: null,
+                        link: null,
+                        snippet: '',
+                        sourceTitle: 'Default'
+                    });
+                }
+            }
+        }
+
+        // Chuyển Map thành Array
         let schools = Array.from(schoolsMap.values());
         
-        // Loại bỏ trùng lặp
+        // Loại bỏ trùng lặp lần cuối
         const seen = new Set();
         schools = schools.filter(s => {
             const key = s.schoolName.toLowerCase();
@@ -171,13 +287,14 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
 
         // Lấy top 5 trường
         const topSchools = schools.slice(0, 5);
+        console.log(`[SearchService] Tìm được ${topSchools.length} trường:`, topSchools.map(s => s.schoolName));
 
-        // Gọi SerpAPI để lấy điểm chuẩn 3 năm cho từng trường
+        // Gọi SerpAPI để lấy điểm chuẩn 3 năm cho từng trường - từng trường từng năm để chính xác
         const result = {
             searchType: 'major_only',
             majorName: majorName,
             location: location || 'Toàn quốc',
-            summary: `Danh sách các trường đại học hàng đầu đào tạo ngành ${majorName} tại ${location || 'Việt Nam'}`,
+            summary: `Danh sách ${topSchools.length} trường đại học hàng đầu đào tạo ngành ${majorName}`,
             schools: []
         };
 
@@ -192,13 +309,16 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
             };
 
             try {
-                // Lấy điểm chuẩn 3 năm
+                // Lấy điểm chuẩn chính xác cho từng trường - 3 năm riêng biệt
                 const benchmarkData = await getBenchmarkFromSerpAPI(school.schoolName, majorName);
                 if (benchmarkData) {
                     schoolInfo.benchmark2025 = benchmarkData.benchmark2025;
                     schoolInfo.benchmark2024 = benchmarkData.benchmark2024;
                     schoolInfo.benchmark2023 = benchmarkData.benchmark2023;
-                } else if (school.score) {
+                }
+                
+                // Nếu vẫn không có điểm nào, dùng score từ kết quả tìm trường
+                if (!schoolInfo.benchmark2025 && !schoolInfo.benchmark2024 && !schoolInfo.benchmark2023 && school.score) {
                     schoolInfo.benchmark2025 = school.score.toFixed(1);
                 }
             } catch (err) {
@@ -208,7 +328,7 @@ async function searchMajorWithSerpAPI(majorName, location = null) {
             result.schools.push(schoolInfo);
             
             // Delay để tránh rate limit
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 1500));
         }
 
         return result;
@@ -328,9 +448,7 @@ async function searchSchoolWithSerpAPI(schoolName, location = null) {
  */
 const searchCareerQuickly = async ({ mode, industry, school, position, location, age }) => {
     try {
-        // Import axios here to avoid circular dependency
-        const axios = require('axios');
-        
+        // ========== XÁC ĐỊNH TRƯỜNG HỢP CẦN XỬ LÝ ==========
         // Xác định trường hợp đang xử lý
         const hasSchool = school && school.trim().length > 0;
         const hasIndustry = industry && industry.trim().length > 0;
