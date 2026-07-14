@@ -1,4 +1,5 @@
 const { getGenerativeModelWithFallback } = require("./geminiClient");
+const { searchBenchmarkByYears } = require("./serpapiService");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash", // Default model, falls back to others on error
@@ -434,7 +435,78 @@ Trả về JSON:
 }
 
 /**
- * Đánh giá mức độ phù hợp của user với nghề dựa trên câu trả lời
+ * Trích xuất điểm chuẩn từ raw snippet của SerpAPI
+ */
+function extractSpecificBenchmarks(snippets) {
+    const scores = [];
+    for (const snippet of snippets) {
+        const snippetText = snippet.snippet || '';
+        // Tìm pattern điểm chuẩn: VD "26.5", "25.0" trong snippet
+        const scoreMatches = snippetText.match(/\b(\d{1,2}[.,]\d)\b/g);
+        if (scoreMatches) {
+            const validScores = scoreMatches
+                .map(s => parseFloat(s.replace(',', '.')))
+                .filter(n => n >= 15 && n <= 30); // Lọc điểm hợp lệ (15-30)
+            if (validScores.length > 0) {
+                scores.push(...validScores);
+            }
+        }
+    }
+    // Trả về điểm trung bình hoặc điểm cao nhất tìm được
+    if (scores.length === 0) return null;
+    // Lấy median
+    scores.sort((a, b) => a - b);
+    const mid = Math.floor(scores.length / 2);
+    return scores.length % 2 !== 0 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
+}
+
+/**
+ * Lấy điểm chuẩn từ SerpAPI cho nhiều năm
+ * @param {string} schoolName - Tên trường
+ * @param {string} career - Ngành học
+ * @returns {Promise<object|null>}
+ */
+async function getBenchmarksFromSerpAPI(schoolName, career = null) {
+    try {
+        if (!process.env.SERPAPI_API_KEY) {
+            console.warn('[AI Service] SERPAPI_API_KEY chưa được cấu hình');
+            return null;
+        }
+
+        const results = await searchBenchmarkByYears(schoolName, career, [2025, 2024, 2023]);
+
+        // Trích xuất điểm chuẩn cụ thể cho mỗi năm
+        const extractedBenchmarks = {
+            benchmark2025: null,
+            benchmark2024: null,
+            benchmark2023: null
+        };
+
+        for (const [year, result] of Object.entries(results)) {
+            if (result.success && result.benchmarks && result.benchmarks.length > 0) {
+                const score = extractSpecificBenchmarks(result.benchmarks);
+                if (score !== null) {
+                    if (year === 2025) extractedBenchmarks.benchmark2025 = score.toFixed(1);
+                    if (year === 2024) extractedBenchmarks.benchmark2024 = score.toFixed(1);
+                    if (year === 2023) extractedBenchmarks.benchmark2023 = score.toFixed(1);
+                }
+            }
+        }
+
+        // Kiểm tra xem có ít nhất 1 năm có điểm chuẩn không
+        if (extractedBenchmarks.benchmark2025 || extractedBenchmarks.benchmark2024 || extractedBenchmarks.benchmark2023) {
+            return { source: 'serpapi', data: extractedBenchmarks };
+        }
+        return null;
+    } catch (error) {
+        console.error('[AI Service] Lỗi khi lấy điểm chuẩn từ SerpAPI:', error.message);
+        return null;
+    }
+}
+
+/**
+ * Bước 1: Đánh giá phù hợp nghề - AI tạo danh sách trường theo ngành + khu vực
+ * (Chưa có điểm chuẩn, sẽ được bổ sung sau bằng SerpAPI)
  */
 async function evaluateCareerTest(testName, questions, userContext = {}) {
     const cacheKey = getCacheKey('evaluateCareerTest', { testName, questions, userContext });
@@ -449,16 +521,10 @@ async function evaluateCareerTest(testName, questions, userContext = {}) {
         const qaList = questions.map((q, idx) => `Q${idx + 1}: ${q.questionText} → ${q.userAnswer}`).join('\n');
 
         const ctx = userContext || {};
-        const profile = [
-            ctx.targetJob && `Job: ${ctx.targetJob}`,
-            ctx.educationLevel && `Education: ${ctx.educationLevel}`,
-            ctx.hobby && `Hobby: ${ctx.hobby}`,
-            ctx.age && `Age: ${ctx.age}`,
-            ctx.status && `Status: ${ctx.status === 'student' ? 'Học sinh THCS/THPT' : 'Sinh viên/Người đi làm'}`
-        ].filter(Boolean).join(', ');
-
         const isStudent = ctx.status === 'student';
+        const location = ctx.location || 'Việt Nam';
 
+        // Prompt cho học sinh - ưu tiên trường theo khu vực
         const studentJsonFormat = `{
   "score": 1-5 (decimal 0.5 steps),
   "summary": "Phân tích ngắn gọn cho học sinh, tập trung vào tiềm năng và định hướng.",
@@ -467,11 +533,14 @@ async function evaluateCareerTest(testName, questions, userContext = {}) {
   "advice": "Lời khuyên cụ thể cho học sinh để chuẩn bị cho ngành này.",
   "trainingInstitutions": [
     {
-      "schoolName": "Tên trường đại học/cao đẳng hàng đầu",
+      "schoolName": "Tên trường đại học/cao đẳng phù hợp với khu vực ${location}",
+      "schoolLocation": "Tỉnh/Thành phố của trường",
       "description": "Mô tả ngắn về điểm nổi bật của trường liên quan đến ngành này.",
-      "benchmarkScores": "Điểm chuẩn 3 năm gần nhất (ví dụ: 2023: 25.5, 2022: 25.0, 2021: 24.5)",
-      "officialLink": "URL trang chủ của trường",
-      "admissionLink": "URL trang tuyển sinh của trường"
+      "benchmark2025": null,
+      "benchmark2024": null,
+      "benchmark2023": null,
+      "officialLink": null,
+      "admissionLink": null
     }
   ]
 }`;
@@ -492,24 +561,27 @@ async function evaluateCareerTest(testName, questions, userContext = {}) {
   "laborMarket": "Nhu cầu nhân lực cho ngành này đang tăng trưởng mạnh, đặc biệt ở các thành phố lớn."
 }`;
 
+        // Prompt cho AI - ưu tiên trường theo khu vực, KHÔNG cần điền điểm chuẩn
         const prompt = `Đánh giá phù hợp nghề cho "${testName}".
 
-QUY TẮC BẮT BUỘC VỀ THANG ĐIỂM:
-- Điểm chuẩn (benchmarkScores) của các trường đại học/cao đẳng đề xuất PHẢI ở thang điểm tốt nghiệp THPT Quốc gia truyền thống (tối đa là 30.0). Tuyệt đối không dùng thang điểm 100 (như Bách Khoa TP.HCM) hay thang khác. Nếu trường dùng thang khác, hãy tự động quy đổi tương đương về thang điểm 30.
+THÔNG TIN USER:
+- Ngành nghề quan tâm: ${ctx.targetJob || 'Chưa xác định'}
+- Khu vực sinh sống/mong muốn: ${location}
+- Học vấn: ${ctx.educationLevel || 'THPT'}
+- Độ tuổi: ${ctx.age || 'N/A'}
 
-Profile: ${profile || "N/A"}
+QUY TẮC BẮT BUỘC:
+1. Ưu tiên các trường Đại học/Cao đẳng nằm trong khu vực "${location}" hoặc lân cận.
+2. Nếu ngành nghề phù hợp nhưng không có trường tốt trong khu vực, hãy gợi ý trường ở khu vực gần nhất có đào tạo.
+3. CHỈ cung cấp danh sách trường phù hợp, KHÔNG cần điền điểm chuẩn (sẽ được cập nhật tự động sau).
 
-Answers:
+Câu trả lời của học sinh:
 ${qaList}
 
-DỰA VÀO TRƯỜNG "Status" TRONG PROFILE, HÃY CHỌN 1 TRONG 2 ĐỊNH DẠNG JSON SAU ĐỂ TRẢ VỀ.
+Hãy trả về JSON theo định dạng sau:
+${isStudent ? studentJsonFormat : workingJsonFormat}
 
-1. Nếu Status là "Học sinh THCS/THPT", trả về JSON theo định dạng sau:
-${studentJsonFormat}
-
-2. Nếu Status là "Sinh viên/Người đi làm", trả về JSON theo định dạng sau:
-${workingJsonFormat}
-`;
+Chỉ trả về JSON, không kèm giải thích.`;
 
         const result = await Promise.race([
             model.generateContent(prompt),
@@ -530,6 +602,31 @@ ${workingJsonFormat}
 
         if (!parsed) {
             return { error: "Không thể tạo JSON", raw: text };
+        }
+
+        // BƯỚC 2: Gọi SerpAPI để lấy điểm chuẩn cho TỪNG trường trong danh sách
+        if (isStudent && parsed.trainingInstitutions && Array.isArray(parsed.trainingInstitutions)) {
+            const targetJob = ctx.targetJob || '';
+            
+            for (const school of parsed.trainingInstitutions) {
+                if (school.schoolName && targetJob) {
+                    try {
+                        const serpapiResult = await getBenchmarksFromSerpAPI(school.schoolName, targetJob);
+                        if (serpapiResult) {
+                            school.benchmark2025 = serpapiResult.data.benchmark2025 || null;
+                            school.benchmark2024 = serpapiResult.data.benchmark2024 || null;
+                            school.benchmark2023 = serpapiResult.data.benchmark2023 || null;
+                        }
+                        // Delay nhẹ để tránh rate limit
+                        await new Promise(resolve => setTimeout(resolve, 800));
+                    } catch (err) {
+                        console.warn(`[AI Service] Lỗi khi lấy điểm chuẩn cho ${school.schoolName}:`, err.message);
+                    }
+                }
+            }
+            parsed.benchmarkSource = 'serpapi';
+        } else {
+            parsed.benchmarkSource = 'ai_estimation';
         }
 
         setCachedResponse(cacheKey, parsed);
