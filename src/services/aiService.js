@@ -2,7 +2,7 @@ const { getGenerativeModelWithFallback } = require("./geminiClient");
 const { getBenchmarkFromAI } = require("./searchService");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-2.5-flash", // Default model, falls back to others on error
+    model: "gemini-3.1-flash-lite", // Default model, falls back to others on error
     generationConfig: {
         temperature: 0.2, // Giảm randomness để response nhanh hơn
         maxOutputTokens: 4096, // Tăng giới hạn output để tránh bị cắt cụt JSON
@@ -11,7 +11,7 @@ const model = getGenerativeModelWithFallback({
 });
 
 const groundedModel = getGenerativeModelWithFallback({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.1-flash-lite",
     generationConfig: {
         temperature: 0.4,
         maxOutputTokens: 8192

@@ -3,7 +3,7 @@ const { getGenerativeModelWithFallback, extractJsonFromText } = require("./gemin
 const verification = require("./verificationService");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.1-flash-lite",
     generationConfig: { 
         temperature: 0.3
     },
@@ -130,6 +130,165 @@ const normalizeSchoolInDirectory = verification.normalizeSchool;
 const normalizeBenchmark = verification.normalizeBenchmark;
 
 /**
+ * Lấy điểm chuẩn cho một trường và DANH SÁCH các ngành bằng AI Grounding trong một request duy nhất (Batching).
+ */
+async function getBenchmarksFromAIBatched(universityName, majors) {
+    if (!majors || majors.length === 0) return {};
+
+    try {
+        const prompt = `Bạn là một AI chuyên gia trích xuất dữ liệu tuyển sinh đại học có độ chính xác cao tại Việt Nam.
+Nhiệm vụ của bạn là tra cứu thông tin điểm chuẩn năm 2025 của trường: "${universityName}" cho danh sách các ngành dưới đây từ internet (sử dụng công cụ tìm kiếm của bạn) và trả về kết quả chính xác nhất.
+
+Danh sách ngành cần tra cứu:
+${majors.map((m, idx) => `${idx + 1}. "${m}"`).join('\n')}
+
+HƯỚNG DẪN XỬ LÝ DỮ LIỆU NGHIÊM NGẶT:
+1. Quy trình suy luận từng bước (Chain-of-Thought):
+   - Bước 1: Tra cứu trực tuyến để tìm các trang web uy tín (tuyensinh247, vnexpress, vietnamnet, v.v.) nói về điểm chuẩn tuyển sinh năm 2025 của trường "${universityName}".
+   - Bước 2: Tìm đúng từng ngành trong danh sách các ngành trên trong các kết quả tìm kiếm.
+   - Bước 3: Xác định đúng phương thức xét tuyển trúng tuyển chính thức (ưu tiên xét điểm thi tốt nghiệp THPT năm 2025). Không lấy điểm sàn nhận hồ sơ.
+   - Bước 4: Kiểm tra định dạng điểm số, thực hiện tự động sửa lỗi dấu phẩy thành dấu chấm (ví dụ: 25,5 -> 25.5). Quy đổi về hệ điểm thang 30 nếu trường dùng thang điểm khác (ví dụ: thang 40).
+   - Bước 5: Điền thông tin vào định dạng JSON yêu cầu.
+
+2. Quy tắc tự sửa lỗi định dạng số:
+   - Nếu điểm số tìm thấy sử dụng dấu phẩy (ví dụ: 24,75 hoặc 25,5), bắt buộc phải tự động chuyển thành dấu chấm (24.75 hoặc 25.5) trong trường "benchmark".
+   - Trường "benchmark" phải là một số thực (FLOAT) hợp lệ hoặc null. Không bao giờ chứa dấu phẩy hay ký tự lạ.
+   - Nếu điểm là số nguyên (ví dụ: 25), hãy biểu diễn dưới dạng số (25 hoặc 25.0).
+
+3. Nới lỏng định dạng (Mental Slack):
+   - Nếu không tìm thấy điểm chuẩn năm 2025 chính thức, hoặc chỉ có điểm sàn nhận hồ sơ của năm 2025 cho một ngành nào đó, hãy điền null vào trường "benchmark" và ghi chú rõ lý do vào trường "raw_status".
+
+ĐẦU RA BẮT BUỘC:
+Chỉ trả về chuỗi JSON thô, không kèm định dạng markdown (không có dấu \`\`\`json), không giải thích gì thêm ngoài JSON.
+JSON cấu trúc chính xác như sau:
+{
+  "results": [
+    {
+      "majorName": "<tên ngành gốc được yêu cầu>",
+      "benchmark": <số thực hoặc null>,
+      "year": 2025,
+      "method": "<phương thức xét tuyển hoặc null>",
+      "raw_status": "<ghi chú/lý do trích xuất hoặc tình trạng dữ liệu>"
+    }
+  ]
+}
+`;
+
+        const response = await model.generateContent(prompt);
+        const text = response.response.text().trim();
+        console.log(`[SearchService] AI batched response cho điểm chuẩn ${universityName}:`, text);
+
+        const parsed = extractJsonFromText(text);
+        if (!parsed || !parsed.results || !Array.isArray(parsed.results)) {
+            console.warn(`[SearchService] Không thể phân tích JSON điểm chuẩn gộp cho ${universityName}`);
+            return {};
+        }
+
+        const benchmarkMap = {};
+        for (const item of parsed.results) {
+            if (item.benchmark == null) continue;
+            
+            const norm = verification.normalizeBenchmark(item.benchmark, 'gemini-grounding');
+            if (norm.value === null) {
+                console.warn(`[SearchService] Điểm của ngành ${item.majorName} từ AI (${item.benchmark}) nằm ngoài thang 30 -> bỏ`);
+                continue;
+            }
+
+            benchmarkMap[item.majorName.toLowerCase().trim()] = {
+                benchmark: norm.value.toFixed(1),
+                year: item.year || 2025,
+                source: 'gemini-grounding',
+                verified: false
+            };
+        }
+
+        return benchmarkMap;
+    } catch (error) {
+        console.error(`[SearchService] Lỗi khi lấy điểm chuẩn gộp cho ${universityName}:`, error.message);
+        return {};
+    }
+}
+
+/**
+ * Lấy điểm chuẩn ngành cho DANH SÁCH các trường đại học bằng AI Grounding trong một request duy nhất (Batching).
+ */
+async function getBenchmarksForSchoolsBatched(schoolsList, majorName) {
+    if (!schoolsList || schoolsList.length === 0) return {};
+
+    try {
+        const prompt = `Bạn là một AI chuyên gia trích xuất dữ liệu tuyển sinh đại học có độ chính xác cao tại Việt Nam.
+Nhiệm vụ của bạn là tra cứu trực tuyến thông tin điểm chuẩn năm 2025 của ngành: "${majorName}" của các trường đại học dưới đây từ internet (sử dụng công cụ tìm kiếm của bạn) và trả về kết quả chính xác nhất.
+
+Danh sách trường cần tra cứu:
+${schoolsList.map((s, idx) => `${idx + 1}. "${s}"`).join('\n')}
+
+HƯỚNG DẪN XỬ LÝ DỮ LIỆU NGHIÊM NGẶT:
+1. Quy trình suy luận từng bước (Chain-of-Thought):
+   - Bước 1: Tra cứu trực tuyến điểm chuẩn năm 2025 của ngành "${majorName}" cho từng trường trong danh sách.
+   - Bước 2: Xác định đúng phương thức xét tuyển trúng tuyển chính thức (ưu tiên xét điểm thi tốt nghiệp THPT năm 2025). Không lấy điểm sàn nhận hồ sơ.
+   - Bước 3: Kiểm tra định dạng điểm số, thực hiện tự động sửa lỗi dấu phẩy thành dấu chấm (ví dụ: 25,5 -> 25.5). Quy đổi về hệ điểm thang 30 nếu trường dùng thang điểm khác (ví dụ: thang 40).
+   - Bước 4: Điền thông tin vào định dạng JSON yêu cầu.
+
+2. Quy tắc tự sửa lỗi định dạng số:
+   - Nếu điểm số tìm thấy sử dụng dấu phẩy (ví dụ: 24,75 hoặc 25,5), bắt buộc phải tự động chuyển thành dấu chấm (24.75 hoặc 25.5) trong trường "benchmark".
+   - Trường "benchmark" phải là một số thực (FLOAT) hợp lệ hoặc null. Không bao giờ chứa dấu phẩy hay ký tự lạ.
+   - Nếu điểm là số nguyên (ví dụ: 25), hãy biểu diễn dưới dạng số (25 hoặc 25.0).
+
+3. Nới lỏng định dạng (Mental Slack):
+   - Nếu không tìm thấy điểm chuẩn năm 2025 chính thức, hoặc chỉ có điểm sàn nhận hồ sơ của năm 2025 cho một trường nào đó, hãy điền null vào trường "benchmark" và ghi chú rõ lý do vào trường "raw_status".
+
+ĐẦU RA BẮT BUỘC:
+Chỉ trả về chuỗi JSON thô, không kèm định dạng markdown (không có dấu \`\`\`json), không giải thích gì thêm ngoài JSON.
+JSON cấu trúc chính xác như sau:
+{
+  "results": [
+    {
+      "schoolName": "<tên trường gốc được yêu cầu>",
+      "benchmark": <số thực hoặc null>,
+      "year": 2025,
+      "method": "<phương thức xét tuyển hoặc null>",
+      "raw_status": "<ghi chú/lý do trích xuất hoặc tình trạng dữ liệu>"
+    }
+  ]
+}
+`;
+
+        const response = await model.generateContent(prompt);
+        const text = response.response.text().trim();
+        console.log(`[SearchService] AI batched response điểm chuẩn ngành ${majorName} cho các trường:`, text);
+
+        const parsed = extractJsonFromText(text);
+        if (!parsed || !parsed.results || !Array.isArray(parsed.results)) {
+            console.warn(`[SearchService] Không thể phân tích JSON điểm chuẩn gộp của ngành ${majorName}`);
+            return {};
+        }
+
+        const benchmarkMap = {};
+        for (const item of parsed.results) {
+            if (item.benchmark == null) continue;
+
+            const norm = verification.normalizeBenchmark(item.benchmark, 'gemini-grounding');
+            if (norm.value === null) {
+                console.warn(`[SearchService] Điểm tại trường ${item.schoolName} từ AI (${item.benchmark}) nằm ngoài thang 30 -> bỏ`);
+                continue;
+            }
+
+            benchmarkMap[item.schoolName.toLowerCase().trim()] = {
+                benchmark: norm.value.toFixed(1),
+                year: item.year || 2025,
+                source: 'gemini-grounding',
+                verified: false
+            };
+        }
+
+        return benchmarkMap;
+    } catch (error) {
+        console.error(`[SearchService] Lỗi khi lấy điểm chuẩn ngành ${majorName} gộp cho các trường:`, error.message);
+        return {};
+    }
+}
+
+/**
  * Tìm kiếm ngành học - Trả về TOP trường đào tạo ngành đó
  * Sử dụng Gemini (AI Grounding) để đề xuất trường và tra cứu điểm chuẩn
  */
@@ -171,6 +330,9 @@ Yêu cầu:
         };
         
         const allowedLocations = verification.getLocationAliases(location);
+        const candidateSchools = [];
+
+        // Lọc và chuẩn hóa danh sách các trường trước
         for (const s of parsed.schools) {
             const normSchool = verification.normalizeSchool(s.schoolName, location);
             if (!normSchool.verified) {
@@ -181,32 +343,68 @@ Yêu cầu:
                 !allowedLocations.includes(normSchool.location.toLowerCase())) {
                 continue;
             }
+            candidateSchools.push(normSchool);
+        }
+
+        // Bước 1: Tra cứu offline cache
+        const schoolsToQueryAI = [];
+        const cachedBenchmarks = {};
+
+        for (const normSchool of candidateSchools) {
+            const key = normSchool.canonical.toLowerCase().trim();
+            try {
+                const cached = verification.lookupBenchmarkFromCache(normSchool.canonical, majorName);
+                if (cached && cached.value !== null) {
+                    cachedBenchmarks[key] = {
+                        benchmark: cached.value.toFixed(1),
+                        year: cached.year,
+                        source: 'crawler',
+                        verified: true
+                    };
+                } else {
+                    schoolsToQueryAI.push(normSchool.canonical);
+                }
+            } catch (err) {
+                console.warn(`[SearchService] Lỗi tra cache cho trường ${normSchool.canonical}:`, err.message);
+                schoolsToQueryAI.push(normSchool.canonical);
+            }
+        }
+
+        // Bước 2: Gọi AI gộp cho những trường không có trong cache (Batching)
+        let aiBenchmarks = {};
+        if (schoolsToQueryAI.length > 0) {
+            aiBenchmarks = await getBenchmarksForSchoolsBatched(schoolsToQueryAI, majorName);
+        }
+
+        // Bước 3: Tổng hợp kết quả
+        for (const normSchool of candidateSchools) {
+            const key = normSchool.canonical.toLowerCase().trim();
+            let benchmarkData = cachedBenchmarks[key] || null;
+
+            if (!benchmarkData) {
+                benchmarkData = aiBenchmarks[key];
+            }
+
+            if (!benchmarkData) {
+                for (const aiKey of Object.keys(aiBenchmarks)) {
+                    if (aiKey.includes(key) || key.includes(aiKey)) {
+                        benchmarkData = aiBenchmarks[aiKey];
+                        break;
+                    }
+                }
+            }
 
             const schoolInfo = {
                 schoolName: normSchool.canonical,
                 location: normSchool.location || location || 'Việt Nam',
                 schoolVerified: true,
-                benchmark: null,
-                benchmarkYear: null,
-                benchmarkSource: null,
-                benchmarkVerified: false
+                benchmark: benchmarkData ? benchmarkData.benchmark : null,
+                benchmarkYear: benchmarkData ? benchmarkData.year : null,
+                benchmarkSource: benchmarkData ? benchmarkData.source : null,
+                benchmarkVerified: benchmarkData ? benchmarkData.verified : false
             };
 
-            try {
-                const benchmarkData = await getBenchmarkFromAI(normSchool.canonical, majorName);
-                if (benchmarkData && benchmarkData.benchmark) {
-                    schoolInfo.benchmark = benchmarkData.benchmark;
-                    schoolInfo.benchmarkYear = benchmarkData.year;
-                    schoolInfo.benchmarkSource = benchmarkData.source;
-                    schoolInfo.benchmarkVerified = benchmarkData.verified;
-                }
-            } catch (err) {
-                console.warn(`[SearchService] Lỗi lấy điểm cho ${s.schoolName}:`, err.message);
-            }
-
             result.schools.push(schoolInfo);
-            // Delay nhẹ để tránh rate limit
-            await new Promise(resolve => setTimeout(resolve, 500));
         }
 
         return result;
@@ -249,51 +447,76 @@ Yêu cầu:
         
         const normSchool = verification.normalizeSchool(schoolName, location);
         if (!normSchool.verified) {
-            console.warn(`[SearchService] Trường "${schoolName}" không nằm trong whitelist.`);
-            return {
-                searchType: 'school_only',
-                schoolName: schoolName,
-                location: location || 'Việt Nam',
-                summary: `Không tìm thấy thông tin đáng tin cậy cho trường "${schoolName}".`,
-                topMajors: [],
-                schoolVerified: false
-            };
+            console.warn(`[SearchService] Trường "${schoolName}" không nằm trong whitelist. Vẫn tiến hành tìm kiếm bằng AI.`);
         }
 
         const result = {
             searchType: 'school_only',
             schoolName: normSchool.canonical,
-            schoolVerified: true,
+            schoolVerified: normSchool.verified,
             location: normSchool.location || location || 'Việt Nam',
             summary: `TOP ${parsed.majors.length} ngành đào tạo hot nhất tại ${normSchool.canonical} (Đề xuất bởi AI)`,
             topMajors: []
         };
 
-        for (const m of parsed.majors) {
-            const majorInfo = {
-                majorName: m.majorName,
-                benchmark: null,
-                benchmarkYear: null,
-                benchmarkSource: null,
-                benchmarkVerified: false,
-                schoolVerified: true
-            };
+        // Bước 1: Tra cứu offline cache trước
+        const majorsToQueryAI = [];
+        const cachedBenchmarks = {};
 
+        for (const m of parsed.majors) {
+            const key = m.majorName.toLowerCase().trim();
             try {
-                const benchmarkData = await getBenchmarkFromAI(normSchool.canonical, m.majorName);
-                if (benchmarkData && benchmarkData.benchmark) {
-                    majorInfo.benchmark = benchmarkData.benchmark;
-                    majorInfo.benchmarkYear = benchmarkData.year;
-                    majorInfo.benchmarkSource = benchmarkData.source;
-                    majorInfo.benchmarkVerified = benchmarkData.verified;
+                const cached = verification.lookupBenchmarkFromCache(normSchool.canonical, m.majorName);
+                if (cached && cached.value !== null) {
+                    cachedBenchmarks[key] = {
+                        benchmark: cached.value.toFixed(1),
+                        year: cached.year,
+                        source: 'crawler',
+                        verified: true
+                    };
+                } else {
+                    majorsToQueryAI.push(m.majorName);
                 }
             } catch (err) {
-                console.warn(`[SearchService] Lỗi lấy điểm ngành ${m.majorName}:`, err.message);
+                console.warn(`[SearchService] Lỗi tra cache cho ngành ${m.majorName}:`, err.message);
+                majorsToQueryAI.push(m.majorName);
+            }
+        }
+
+        // Bước 2: Gọi AI gộp cho những ngành không có trong cache (Batching)
+        let aiBenchmarks = {};
+        if (majorsToQueryAI.length > 0) {
+            aiBenchmarks = await getBenchmarksFromAIBatched(normSchool.canonical, majorsToQueryAI);
+        }
+
+        // Bước 3: Tổng hợp kết quả
+        for (const m of parsed.majors) {
+            const key = m.majorName.toLowerCase().trim();
+            let benchmarkData = cachedBenchmarks[key] || null;
+
+            if (!benchmarkData) {
+                benchmarkData = aiBenchmarks[key];
             }
 
+            if (!benchmarkData) {
+                for (const aiKey of Object.keys(aiBenchmarks)) {
+                    if (aiKey.includes(key) || key.includes(aiKey)) {
+                        benchmarkData = aiBenchmarks[aiKey];
+                        break;
+                    }
+                }
+            }
+
+            const majorInfo = {
+                majorName: m.majorName,
+                benchmark: benchmarkData ? benchmarkData.benchmark : null,
+                benchmarkYear: benchmarkData ? benchmarkData.year : null,
+                benchmarkSource: benchmarkData ? benchmarkData.source : null,
+                benchmarkVerified: benchmarkData ? benchmarkData.verified : false,
+                schoolVerified: normSchool.verified
+            };
+
             result.topMajors.push(majorInfo);
-            // Delay nhẹ để tránh rate limit
-            await new Promise(resolve => setTimeout(resolve, 500));
         }
 
         return result;

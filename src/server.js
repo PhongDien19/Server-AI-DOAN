@@ -485,7 +485,7 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log("Đã kết nối MySQL thành công!");
 
     // Tự động đồng bộ cấu trúc database với MySQL
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     console.log("Đã đồng bộ hóa cơ sở dữ liệu MySQL thành công!");
 
     // Khởi tạo tài khoản mặc định phongdien1905@gmail.com / 123456 trong MySQL

@@ -3,11 +3,10 @@ const { setSessionContext, getSessionContext, setPendingEvaluation } = require("
 const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.1-flash-lite",
     generationConfig: {
         temperature: 0.5,
-        // gemini-2.5-flash mac dinh dung 1 phan token cho "thinking/reasoning"
-        // (thoughtsTokenCount), nen can maxOutputTokens rat lon de phan JSON
+        // gemini-3.1-flash-lite can dung maxOutputTokens de phan JSON
         // tra ve khong bi cat cut. 16384 cho 15 cau hoi Likert + SCCT.
         maxOutputTokens: 16384,
         // Chi dinh khong su dung thinking de tiet kiem token cho output
