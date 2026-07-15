@@ -1,5 +1,5 @@
 const { getGenerativeModelWithFallback } = require("./geminiClient");
-const { searchBenchmarkByYears, searchLatestBenchmark } = require("./serpapiService");
+const { getBenchmarkFromAI } = require("./searchService");
 
 const model = getGenerativeModelWithFallback({
     model: "gemini-2.5-flash", // Default model, falls back to others on error
@@ -467,36 +467,8 @@ function extractSpecificBenchmarks(snippets) {
 }
 
 /**
- * Lấy điểm chuẩn từ SerpAPI - CHỈ 1 NĂM MỚI NHẤT (đảm bảo có giá trị)
- * @param {string} schoolName - Tên trường
- * @param {string} career - Ngành học
- * @returns {Promise<{benchmark: string|null, year: number|null, source: string} | null>}
- */
-async function getBenchmarksFromSerpAPI(schoolName, career = null) {
-    try {
-        if (!process.env.SERPAPI_API_KEY) {
-            console.warn('[AI Service] SERPAPI_API_KEY chưa được cấu hình');
-            return null;
-        }
-
-        const result = await searchLatestBenchmark(schoolName, career, 2025, [2024, 2023]);
-        if (!result || result.benchmark == null) return null;
-
-        return {
-            benchmark: result.benchmark.toFixed(1),
-            year: result.year,
-            source: 'serpapi'
-        };
-    } catch (error) {
-        console.error('[AI Service] Lỗi khi lấy điểm chuẩn từ SerpAPI:', error.message);
-        return null;
-    }
-}
-
-
-/**
  * Bước 1: Đánh giá phù hợp nghề - AI tạo danh sách trường theo ngành + khu vực
- * (Chưa có điểm chuẩn, sẽ được bổ sung sau bằng SerpAPI)
+ * (Chưa có điểm chuẩn, sẽ được bổ sung sau bằng AI Grounding)
  */
 async function evaluateCareerTest(testName, questions, userContext = {}) {
     const cacheKey = getCacheKey('evaluateCareerTest', { testName, questions, userContext });
@@ -593,17 +565,17 @@ Chỉ trả về JSON, không kèm giải thích.`;
             return { error: "Không thể tạo JSON", raw: text };
         }
 
-        // BƯỚC 2: Gọi SerpAPI để lấy điểm chuẩn cho TỪNG trường trong danh sách
+        // BƯỚC 2: Gọi AI Grounding để lấy điểm chuẩn cho TỪNG trường trong danh sách
         if (isStudent && parsed.trainingInstitutions && Array.isArray(parsed.trainingInstitutions)) {
             const targetJob = ctx.targetJob || '';
 
             for (const school of parsed.trainingInstitutions) {
                 if (school.schoolName && targetJob) {
                     try {
-                        const serpapiResult = await getBenchmarksFromSerpAPI(school.schoolName, targetJob);
-                        if (serpapiResult && serpapiResult.benchmark) {
-                            school.benchmark = serpapiResult.benchmark;
-                            school.benchmarkYear = serpapiResult.year;
+                        const benchmarkResult = await getBenchmarkFromAI(school.schoolName, targetJob);
+                        if (benchmarkResult && benchmarkResult.benchmark) {
+                            school.benchmark = benchmarkResult.benchmark;
+                            school.benchmarkYear = benchmarkResult.year;
                         }
                         // Delay nhẹ để tránh rate limit
                         await new Promise(resolve => setTimeout(resolve, 800));
@@ -612,7 +584,7 @@ Chỉ trả về JSON, không kèm giải thích.`;
                     }
                 }
             }
-            parsed.benchmarkSource = 'serpapi';
+            parsed.benchmarkSource = 'gemini-grounding';
         } else {
             parsed.benchmarkSource = 'ai_estimation';
         }
