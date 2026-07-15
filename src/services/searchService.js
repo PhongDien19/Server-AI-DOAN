@@ -3,7 +3,7 @@ const { getGenerativeModelWithFallback, extractJsonFromText } = require("./gemin
 const verification = require("./verificationService");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-3.1-flash-lite",
+    model: "gemini-2.5-flash",
     generationConfig: { 
         temperature: 0.3
     },
@@ -394,11 +394,17 @@ Yêu cầu:
                 }
             }
 
+            const benchmarkVal = benchmarkData ? benchmarkData.benchmark : null;
+            if (benchmarkVal === null || benchmarkVal === undefined) {
+                console.log(`[SearchService] Lọc bỏ trường ${normSchool.canonical} vì điểm chuẩn ngành ${majorName} là null`);
+                continue;
+            }
+
             const schoolInfo = {
                 schoolName: normSchool.canonical,
                 location: normSchool.location || location || 'Việt Nam',
                 schoolVerified: true,
-                benchmark: benchmarkData ? benchmarkData.benchmark : null,
+                benchmark: benchmarkVal,
                 benchmarkYear: benchmarkData ? benchmarkData.year : null,
                 benchmarkSource: benchmarkData ? benchmarkData.source : null,
                 benchmarkVerified: benchmarkData ? benchmarkData.verified : false
@@ -507,9 +513,15 @@ Yêu cầu:
                 }
             }
 
+            const benchmarkVal = benchmarkData ? benchmarkData.benchmark : null;
+            if (benchmarkVal === null || benchmarkVal === undefined) {
+                console.log(`[SearchService] Lọc bỏ ngành ${m.majorName} của trường ${normSchool.canonical} vì điểm chuẩn là null`);
+                continue;
+            }
+
             const majorInfo = {
                 majorName: m.majorName,
-                benchmark: benchmarkData ? benchmarkData.benchmark : null,
+                benchmark: benchmarkVal,
                 benchmarkYear: benchmarkData ? benchmarkData.year : null,
                 benchmarkSource: benchmarkData ? benchmarkData.source : null,
                 benchmarkVerified: benchmarkData ? benchmarkData.verified : false,

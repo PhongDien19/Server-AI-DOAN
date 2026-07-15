@@ -2,7 +2,7 @@ const { getGenerativeModelWithFallback } = require("./geminiClient");
 const { getBenchmarkFromAI } = require("./searchService");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-3.1-flash-lite", // Default model, falls back to others on error
+    model: "gemini-2.5-flash", // Default model, falls back to others on error
     generationConfig: {
         temperature: 0.2, // Giảm randomness để response nhanh hơn
         maxOutputTokens: 4096, // Tăng giới hạn output để tránh bị cắt cụt JSON
@@ -11,7 +11,7 @@ const model = getGenerativeModelWithFallback({
 });
 
 const groundedModel = getGenerativeModelWithFallback({
-    model: "gemini-3.1-flash-lite",
+    model: "gemini-2.5-flash",
     generationConfig: {
         temperature: 0.4,
         maxOutputTokens: 8192
@@ -291,6 +291,10 @@ Chỉ trả về JSON.`;
             const text = response.text().trim();
             const parsed = extractJsonFromText(text);
             if (parsed && Array.isArray(parsed.schools) && parsed.schools.length > 0) {
+                parsed.schools = parsed.schools.filter(school => {
+                    const bm = school.benchmarks;
+                    return bm && bm !== 'null' && bm !== 'Đang cập nhật' && school.benchmarkYear !== null && school.benchmarkYear !== undefined;
+                });
                 return parsed;
             }
             return { __error: true, message: 'AI không trả về JSON hợp lệ cho danh sách trường.' };
@@ -568,14 +572,16 @@ Chỉ trả về JSON, không kèm giải thích.`;
         // BƯỚC 2: Gọi AI Grounding để lấy điểm chuẩn cho TỪNG trường trong danh sách
         if (isStudent && parsed.trainingInstitutions && Array.isArray(parsed.trainingInstitutions)) {
             const targetJob = ctx.targetJob || '';
+            const filteredInstitutions = [];
 
             for (const school of parsed.trainingInstitutions) {
                 if (school.schoolName && targetJob) {
                     try {
                         const benchmarkResult = await getBenchmarkFromAI(school.schoolName, targetJob);
-                        if (benchmarkResult && benchmarkResult.benchmark) {
+                        if (benchmarkResult && benchmarkResult.benchmark !== null && benchmarkResult.benchmark !== undefined) {
                             school.benchmark = benchmarkResult.benchmark;
                             school.benchmarkYear = benchmarkResult.year;
+                            filteredInstitutions.push(school);
                         }
                         // Delay nhẹ để tránh rate limit
                         await new Promise(resolve => setTimeout(resolve, 800));
@@ -584,6 +590,7 @@ Chỉ trả về JSON, không kèm giải thích.`;
                     }
                 }
             }
+            parsed.trainingInstitutions = filteredInstitutions;
             parsed.benchmarkSource = 'gemini-grounding';
         } else {
             parsed.benchmarkSource = 'ai_estimation';

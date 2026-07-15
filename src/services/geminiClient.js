@@ -5,8 +5,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 // (lỗi `Quota exceeded ... limit: 0`).
 // `gemini-1.5-flash-8b` cũng trả 404 trên v1beta cho nhiều API key — không dùng nữa.
 const MODEL_CANDIDATES = [
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash"
+    "gemini-2.5-flash",
+    "gemini-3.1-flash-lite"
 ];
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);

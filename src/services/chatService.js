@@ -2,7 +2,7 @@ const { Taikhoan: UserAccount, NguoiDung, KetQuaDiscoveryHoc, KetQuaDiscoveryLam
 const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-3.1-flash-lite",
+    model: "gemini-2.5-flash",
     generationConfig: { 
         temperature: 0.7
     },
