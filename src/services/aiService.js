@@ -1,26 +1,19 @@
-const { getGenerativeModelWithFallback } = require("./geminiClient");
-const { getBenchmarkFromAI } = require("./searchService");
+const { getGenerativeModelWithFallback } = require("./deepseekClient");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-2.5-flash", // Default model, falls back to others on error
+    model: "deepseek-chat", // Default model, falls back to others on error
     generationConfig: {
         temperature: 0.2, // Giảm randomness để response nhanh hơn
         maxOutputTokens: 4096, // Tăng giới hạn output để tránh bị cắt cụt JSON
-    },
-    tools: [{ googleSearch: {} }]
+    }
 });
 
 const groundedModel = getGenerativeModelWithFallback({
-    model: "gemini-2.5-flash",
+    model: "deepseek-chat",
     generationConfig: {
         temperature: 0.4,
         maxOutputTokens: 8192
-    },
-    tools: [
-        {
-            googleSearch: {}
-        }
-    ]
+    }
 });
 
 // Simple cache để tránh gọi API trùng lặp
@@ -28,25 +21,21 @@ const responseCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 phút
 
 /**
- * Chuyển lỗi thô từ Gemini thành thông điệp thân thiện với người dùng cuối.
+ * Chuyển lỗi thô từ DeepSeek thành thông điệp thân thiện với người dùng cuối.
  * Phân biệt 3 loại:
  *   - Timeout khi đang chờ quota -> "đang chờ quota được khôi phục"
- *   - 429 / Quota exceeded     -> "API miễn phí đã hết hạn mức hôm nay" + RetryInfo
+ *   - 429 / Quota bận/quá tải    -> "API DeepSeek đang bận hoặc hết hạn mức"
  *   - Lỗi khác                 -> giữ nguyên message gốc hoặc fallback mặc định
  */
 function friendlyAiError(error) {
     const rawMessage = (error && error.message) || '';
     if (rawMessage.includes('AI request timeout')) {
-        return 'Hệ thống đang chờ quota Gemini được khôi phục. Vui lòng thử lại sau ít phút hoặc vào ngày mai.';
+        return 'Hệ thống đang chờ quota DeepSeek được khôi phục. Vui lòng thử lại sau ít phút hoặc vào ngày mai.';
     }
     if (rawMessage.includes('429') ||
         rawMessage.includes('Quota exceeded') ||
         rawMessage.includes('Too Many Requests')) {
-        const retryMatch = rawMessage.match(/retry in\s+([\d.]+)\s*s/i);
-        const waitHint = retryMatch
-            ? ` Vui lòng đợi khoảng ${Math.ceil(parseFloat(retryMatch[1]))} giây rồi thử lại.`
-            : ' Vui lòng thử lại sau ít phút.';
-        return 'API Gemini miễn phí đã hết hạn mức hôm nay.' + waitHint;
+        return 'API DeepSeek đang bận hoặc đã hết hạn mức hôm nay. Vui lòng thử lại sau ít phút.';
     }
     return rawMessage || 'Dịch vụ tư vấn AI tạm thời gián đoạn. Vui lòng thử lại sau!';
 }
@@ -569,32 +558,7 @@ Chỉ trả về JSON, không kèm giải thích.`;
             return { error: "Không thể tạo JSON", raw: text };
         }
 
-        // BƯỚC 2: Gọi AI Grounding để lấy điểm chuẩn cho TỪNG trường trong danh sách
-        if (isStudent && parsed.trainingInstitutions && Array.isArray(parsed.trainingInstitutions)) {
-            const targetJob = ctx.targetJob || '';
-            const filteredInstitutions = [];
-
-            for (const school of parsed.trainingInstitutions) {
-                if (school.schoolName && targetJob) {
-                    try {
-                        const benchmarkResult = await getBenchmarkFromAI(school.schoolName, targetJob);
-                        if (benchmarkResult && benchmarkResult.benchmark !== null && benchmarkResult.benchmark !== undefined) {
-                            school.benchmark = benchmarkResult.benchmark;
-                            school.benchmarkYear = benchmarkResult.year;
-                            filteredInstitutions.push(school);
-                        }
-                        // Delay nhẹ để tránh rate limit
-                        await new Promise(resolve => setTimeout(resolve, 800));
-                    } catch (err) {
-                        console.warn(`[AI Service] Lỗi khi lấy điểm chuẩn cho ${school.schoolName}:`, err.message);
-                    }
-                }
-            }
-            parsed.trainingInstitutions = filteredInstitutions;
-            parsed.benchmarkSource = 'gemini-grounding';
-        } else {
-            parsed.benchmarkSource = 'ai_estimation';
-        }
+        // BƯỚC 2: Bỏ qua việc tìm kiếm điểm chuẩn (đã xóa tính năng này)
 
         setCachedResponse(cacheKey, parsed);
         return parsed;

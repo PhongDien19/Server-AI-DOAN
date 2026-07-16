@@ -1,12 +1,11 @@
 const { Taikhoan: UserAccount, NguoiDung, KetQuaDiscoveryHoc, KetQuaDiscoveryLam, KetQuaTargetHoc, KetQuaTargetLam } = require("../models");
-const { getGenerativeModelWithFallback, extractJsonFromText } = require("./geminiClient");
+const { getGenerativeModelWithFallback, extractJsonFromText } = require("./deepseekClient");
 
 const model = getGenerativeModelWithFallback({
-    model: "gemini-2.5-flash",
+    model: "deepseek-chat",
     generationConfig: { 
         temperature: 0.7
-    },
-    tools: [{ googleSearch: {} }]
+    }
 });
 
 const askChatbot = async (userId, question) => {
@@ -107,7 +106,13 @@ YÊU CẦU:
 1. Hãy đọc kỹ thông tin và câu hỏi/lựa chọn của họ để đưa ra câu trả lời tư vấn sâu sắc, ngắn gọn, truyền cảm hứng.
 2. Đưa ra các gợi ý câu hỏi nhanh hoặc định hướng tiếp theo để dẫn dắt họ khám phá sâu hơn (Ví dụ: đề xuất họ tìm hiểu sâu hơn về một ngành nghề, lộ trình học tập, hoặc gợi ý tìm hiểu về một trường đào tạo cụ thể trong kết quả test của họ).
 3. Đưa ra đúng từ 3 đến 4 đáp án gợi ý sẵn (dạng câu trả lời ngắn hoặc lựa chọn hành động) để người dùng có thể nhấp chọn ở lượt tiếp theo (ví dụ: "Tìm hiểu lộ trình ngành CNTT", "Xem thông tin tuyển sinh Đại học Bách Khoa", "Hỏi chuyên gia về ngành nghề khác").
-4. QUY TẮC THANG ĐIỂM 30: Nếu người dùng hỏi về điểm chuẩn của các trường Đại học/Cao đẳng, BẮT BUỘC trả về theo thang điểm tốt nghiệp THPT Quốc gia truyền thống (tối đa là 30.0). Nếu trường dùng thang 100 (như Bách khoa TP.HCM) hoặc nhân hệ số (thang 40), hãy tự động quy đổi tương đương về thang điểm 30.
+
+⚠️ QUY TẮC NGHIÊM NGẶT VỀ ĐIỂM CHUẨN:
+- NẾU người dùng hỏi về điểm chuẩn của trường/ngành cụ thể, BẮT BUỘC trả lời:
+  "Tôi không có dữ liệu điểm chuẩn cụ thể cho [ngành] tại [trường]. Bạn có thể tra cứu trực tiếp trên website của trường hoặc các trang tuyển sinh chính thức như tuyensinh247.com."
+- TUYỆT ĐỐI KHÔNG được tự đoán/ước lượng/bịa đặt số điểm chuẩn từ kiến thức huấn luyện của bạn.
+- Nếu bạn không CHẮC CHẮN về một con số điểm chuẩn cụ thể, hãy nói rõ là bạn không biết, không phải đoán.
+- NÊU điểm chuẩn theo thang điểm 30 (thang điểm tốt nghiệp THPT).
 
 Hãy trả về định dạng JSON chuẩn xác như sau:
 {

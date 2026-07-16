@@ -14,6 +14,13 @@
  */
 
 const path = require('path');
+const { getGenerativeModelWithFallback, extractJsonFromText } = require("./deepseekClient");
+const model = getGenerativeModelWithFallback({
+    model: "deepseek-chat",
+    generationConfig: {
+        temperature: 0.3
+    }
+});
 
 /**
  * Whitelist các trường đại học thực tế tại Việt Nam.
@@ -347,6 +354,67 @@ function lookupBenchmarkFromCache(schoolName, majorName) {
     return null;
 }
 
+/**
+ * Tìm các trường đại học thực tế trong whitelist đào tạo ngành này, lấy kèm link chính thức
+ */
+async function getRealSchoolsForMajor(majorName, location = null) {
+    const webSearch = require('./webSearchService');
+    
+    // Lấy danh sách tất cả các trường
+    let candidateSchools = SCHOOL_DIRECTORY.map(s => s.canonical);
+    
+    // Nếu có location, lọc trường theo location
+    if (location) {
+        const filtered = filterSchoolsByLocation(SCHOOL_DIRECTORY.map(s => ({ schoolName: s.canonical })), location);
+        if (filtered && filtered.length > 0) {
+            candidateSchools = filtered.map(s => s.schoolName);
+        }
+    }
+
+    // Hỏi AI xem trường nào trong danh sách thực tế này có đào tạo ngành này
+    const prompt = `Bạn là chuyên gia tuyển sinh đại học Việt Nam.
+Trong danh sách các trường đại học sau đây:
+${candidateSchools.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+Hãy cho biết những trường nào có đào tạo ngành: "${majorName}".
+Yêu cầu:
+1. Chỉ chọn các trường có trong danh sách trên.
+2. Chọn tối đa 5 trường phù hợp nhất, ưu tiên các trường nổi tiếng có đào tạo ngành này.
+3. Trả về kết quả dạng mảng JSON gồm các tên trường viết chính xác như trong danh sách (Ví dụ: ["Trường A", "Trường B"]).
+4. Không giải thích gì thêm ngoài mảng JSON thô.`;
+
+    try {
+        const response = await model.generateContent(prompt);
+        const text = response.response.text().trim();
+        const parsed = extractJsonFromText(text);
+        console.log("[Verification] parsed schools from AI:", parsed);
+        console.log("[Verification] candidate schools list:", candidateSchools);
+        
+        if (parsed && Array.isArray(parsed)) {
+            const promises = parsed.slice(0, 5).map(async (schoolName) => {
+                if (candidateSchools.includes(schoolName)) {
+                    const linkResult = await webSearch.findOfficialAdmissionLink(schoolName, majorName);
+                    return {
+                        schoolName: schoolName,
+                        linkResult: linkResult ? {
+                            url: linkResult.url,
+                            title: linkResult.title,
+                            domain: linkResult.domain
+                        } : null
+                    };
+                }
+                return null;
+            });
+            const results = await Promise.all(promises);
+            return results.filter(r => r !== null);
+        }
+    } catch (err) {
+        console.error('[VerificationService] Lỗi getRealSchoolsForMajor:', err.message);
+    }
+    
+    return [];
+}
+
 module.exports = {
     SCHOOL_DIRECTORY,
     LOCATION_ALIAS_MAP,
@@ -356,5 +424,6 @@ module.exports = {
     normalizeSchool,
     normalizeBenchmark,
     lookupBenchmarkFromCache,
-    loadBenchmarkCache
+    loadBenchmarkCache,
+    getRealSchoolsForMajor
 };

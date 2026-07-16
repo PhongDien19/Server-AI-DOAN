@@ -49,6 +49,7 @@ const submitSurvey = async (req, res) => {
 
         const result = await surveyService.processSurveySubmit(sessionId, answers);
 
+
         // Tự động claim kết quả và cập nhật UserProfile nếu người dùng đã đăng nhập
         if (userId && result.requiresLogin) {
             const claimRes = await claimAssessmentResult(sessionId, userId);
@@ -57,13 +58,18 @@ const submitSurvey = async (req, res) => {
                     success: true,
                     requiresLogin: false,
                     sessionId,
-                    evaluation: claimRes.evaluation,
-                    profile: claimRes.profile
+                    evaluation: claimRes.evaluation || result.evaluation,
+                    profile: claimRes.profile,
+                    hasAnyValidBenchmark: false,
                 });
             }
         }
 
-        res.status(200).json({ success: true, ...result });
+        res.status(200).json({
+            success: true,
+            ...result,
+            hasAnyValidBenchmark: false,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
