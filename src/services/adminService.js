@@ -250,7 +250,8 @@ const getAccounts = async () => {
         vaiTro: acc.role === 'admin' ? 'Admin' : 'User',
         trangThai: acc.isActive ? 1 : 0,
         ngayTao: acc.createdAt ? acc.createdAt.toISOString().slice(0, 16).replace('T', ' ') : 'Chưa rõ',
-        token: acc.tokenCount || 0
+        token: acc.tokenCount || 0,
+        tokenTest: acc.tokenTest || 0
       };
     });
 
@@ -263,7 +264,7 @@ const getAccounts = async () => {
 
 const createAccount = async (data) => {
   try {
-    const { email, password, fullName, role, tokenCount } = data;
+    const { email, password, fullName, role, tokenCount, tokenTest } = data;
 
     const existing = await Taikhoan.findOne({ where: { email } });
     if (existing) {
@@ -278,7 +279,8 @@ const createAccount = async (data) => {
       passwordHash,
       role: role === 'Admin' ? 'admin' : 'user',
       isActive: true,
-      tokenCount: tokenCount !== undefined ? parseInt(tokenCount, 10) : 3
+      tokenCount: tokenCount !== undefined ? parseInt(tokenCount, 10) : 3,
+      tokenTest: tokenTest !== undefined ? parseInt(tokenTest, 10) : 3
     });
 
     await NguoiDung.create({
@@ -310,8 +312,15 @@ const updateAccount = async (id, data) => {
     if (data.token !== undefined) {
       updateFields.tokenCount = parseInt(data.token, 10);
     }
+    if (data.tokenTest !== undefined) {
+      updateFields.tokenTest = parseInt(data.tokenTest, 10);
+    }
     if (data.email !== undefined) {
       updateFields.email = data.email;
+    }
+    if (data.password !== undefined && data.password.trim() !== '') {
+      const saltRounds = 10;
+      updateFields.passwordHash = await bcrypt.hash(data.password, saltRounds);
     }
 
     await Taikhoan.update(updateFields, { where: { id } });

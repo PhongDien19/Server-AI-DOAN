@@ -18,6 +18,12 @@ const initSurvey = async (req, res) => {
             const { Taikhoan: UserAccount } = require('../models');
             const user = await UserAccount.findByPk(userId);
             if (user) {
+                if (user.isActive === false) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Tài khoản của bạn đã bị vô hiệu hóa hoặc khóa. Vui lòng liên hệ quản trị viên.'
+                    });
+                }
                 if (user.tokenTest <= 0) {
                     return res.status(403).json({
                         success: false,
@@ -41,6 +47,17 @@ const submitSurvey = async (req, res) => {
     try {
         const { sessionId, answers } = req.body;
         const userId = req.body.userId || req.headers['x-user-id'] || req.query.userId;
+
+        if (userId) {
+            const { Taikhoan: UserAccount } = require('../models');
+            const user = await UserAccount.findByPk(userId);
+            if (user && user.isActive === false) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Tài khoản của bạn đã bị vô hiệu hóa hoặc khóa. Vui lòng liên hệ quản trị viên.'
+                });
+            }
+        }
 
         // Validate
         if (!sessionId || !answers || !Array.isArray(answers)) {

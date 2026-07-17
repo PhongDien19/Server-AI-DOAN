@@ -25,14 +25,21 @@ const checkLogin = async (email, password) => {
     if (user.isActive === false) {
       return { success: false, message: 'Tài khoản hiện đang bị khóa' };
     }
-            await UserAccount.update(
-              { 
-                tokenCount: 3,
-                tokenTest: 3,
-                lastLoginAt: new Date() 
-              },
-              { where: { id: user.id } }
-            );
+
+    const today = new Date().toDateString();
+    const lastLogin = user.lastLoginAt ? new Date(user.lastLoginAt).toDateString() : null;
+
+    const updateData = { lastLoginAt: new Date() };
+    if (lastLogin !== today) {
+      if (user.tokenCount < 3) {
+        updateData.tokenCount = 3;
+      }
+      if (user.tokenTest < 3) {
+        updateData.tokenTest = 3;
+      }
+    }
+
+    await UserAccount.update(updateData, { where: { id: user.id } });
 
             const profile = await UserProfile.findOne({
                 where: { userId: user.id },
