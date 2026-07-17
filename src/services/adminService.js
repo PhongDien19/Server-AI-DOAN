@@ -69,7 +69,7 @@ const getDashboardStats = async () => {
             [Op.between]: [startOfDay, endOfDay]
           },
           sessionId: {
-            [Op.notIn]: sequelize.literal('(SELECT sessionId FROM LichSuTest)')
+            [Op.notIn]: sequelize.literal('(SELECT sessionId FROM lichsutest)')
           }
         }
       });
