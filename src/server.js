@@ -1,74 +1,46 @@
 require('dotenv').config();
-const bcrypt = require('bcrypt');
 const app = require('./app');
-const { sequelize, Taikhoan, NguoiDung } = require('./models');
+const { sequelize } = require('./models');
+const SeedService = require('./services/seedService');
 
 const PORT = process.env.PORT || 5000;
 
 /**
- * Khởi tạo tài khoản quản trị viên và người dùng mặc định nếu chưa tồn tại
- */
-const seedDefaultAccounts = async () => {
-  try {
-    const defaultEmail = 'phongdien1905@gmail.com';
-    const existing = await Taikhoan.findOne({ where: { email: defaultEmail } });
-
-    if (!existing) {
-      const passwordHash = await bcrypt.hash('123456', 10);
-      const defaultAdmin = await Taikhoan.create({
-        email: defaultEmail,
-        passwordHash,
-        fullName: 'Phong Điền (Admin)',
-        role: 'admin',
-        isActive: true,
-        tokenCount: 100,
-        tokenTest: 100,
-        createdAt: new Date()
-      });
-
-      await NguoiDung.create({
-        userId: defaultAdmin.id,
-        fullName: 'Phong Điền (Admin)',
-        educationLevel: 'Đại học',
-        interests: 'Quản trị hệ thống, Công nghệ'
-      });
-
-      console.log(`[Seed] Khởi tạo tài khoản Admin mặc định thành công: ${defaultEmail} / 123456`);
-    }
-  } catch (seedError) {
-    console.error('[Seed] Lỗi khi tạo tài khoản mặc định:', seedError.message);
-  }
-};
-
-/**
- * Khởi động ứng dụng
+ * Khởi động ứng dụng Backend Trắc nghiệm Hướng nghiệp (Kiến trúc MVC)
  */
 const startServer = async () => {
   try {
-    // 1. Kiểm tra kết nối CSDL MySQL
+    console.log('--- Đang khởi động hệ thống Trắc nghiệm Hướng nghiệp AI ---');
+
+    // 1. Kiểm tra kết nối cơ sở dữ liệu
     await sequelize.authenticate();
-    console.log('✓ Đã kết nối cơ sở dữ liệu MySQL thành công!');
+    const dialectName = sequelize.getDialect().toUpperCase();
+    console.log(`✓ Đã kết nối cơ sở dữ liệu thành công (${dialectName})!`);
 
-    // 2. Đồng bộ các bảng tài khoản và người dùng
+    // 2. Tự động đồng bộ hóa cấu trúc bảng
     await sequelize.sync();
-    console.log('✓ Đã đồng bộ các bảng CSDL (taikhoan, nguoidung) thành công!');
+    console.log('✓ Đã đồng bộ hóa toàn bộ các bảng dữ liệu thành công!');
 
-    // 3. Khởi tạo tài khoản mẫu nếu cần
-    await seedDefaultAccounts();
+    // 3. Khởi tạo dữ liệu mẫu (Seed Data)
+    await SeedService.runAll();
 
     // 4. Lắng nghe yêu cầu HTTP
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`===================================================`);
-      console.log(` Server Quản lý Tài khoản (Mô hình MVC)`);
-      console.log(` Cổng lắng nghe: http://localhost:${PORT}`);
-      console.log(` Endpoint API:  http://localhost:${PORT}/api`);
-      console.log(`===================================================`);
+      console.log(`=================================================================`);
+      console.log(` HỆ THỐNG TRẮC NGHIỆM HƯỚNG NGHIỆP THPT & SINH VIÊN NĂM 1 (MVC)`);
+      console.log(` Cổng máy chủ:  http://localhost:${PORT}`);
+      console.log(` API Endpoint: http://localhost:${PORT}/api`);
+      console.log(` - Đánh giá:   /api/assessment (Luồng chính & Luồng B)`);
+      console.log(` - Câu hỏi:    /api/questions (Personality, Holland, Language...)`);
+      console.log(` - Ngành nghề: /api/majors (10 ngành trọng điểm & MajorProfiles)`);
+      console.log(` - Trường học: /api/schools (30 trường đại học Bắc/Trung/Nam)`);
+      console.log(` - Xác thực:   /api/auth (Đăng ký, Đăng nhập, Token JWT)`);
+      console.log(`=================================================================`);
     });
   } catch (error) {
-    console.error('✗ Không thể kết nối cơ sở dữ liệu MySQL:', error.message);
-    console.log('Khởi chạy server ở chế độ dự phòng...');
+    console.error('✗ Lỗi nghiêm trọng khi khởi động server:', error.message);
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server đang chạy tại cổng ${PORT} (chưa kết nối DB)`);
+      console.log(`Server đang chạy ở chế độ dự phòng tại cổng ${PORT}`);
     });
   }
 };

@@ -14,7 +14,7 @@ const NguoiDung = sequelize.define('NguoiDung', {
     field: 'MaTK'
   },
   fullName: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING(100),
     allowNull: false,
     field: 'HoTen'
   },
@@ -28,6 +28,12 @@ const NguoiDung = sequelize.define('NguoiDung', {
     allowNull: true,
     field: 'educationLevel'
   },
+  audience: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    defaultValue: 'student', // 'student' (học sinh THPT) hoặc 'freshman' (sinh viên năm 1)
+    field: 'DoiTuong'
+  },
   location: {
     type: DataTypes.STRING(100),
     allowNull: true,
@@ -38,6 +44,11 @@ const NguoiDung = sequelize.define('NguoiDung', {
     allowNull: true,
     field: 'SoThich'
   },
+  targetMajor: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    field: 'NganhMucTieu'
+  }
 }, {
   tableName: 'nguoidung',
   timestamps: false,
