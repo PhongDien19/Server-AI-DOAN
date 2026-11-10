@@ -1,9 +1,8 @@
 const { University, AdmissionScore, Major } = require('../models');
-const { SEED_UNIVERSITIES, SEED_ADMISSION_SCORES } = require('../data/seedData');
 
 class SchoolController {
   /**
-   * Lấy danh sách 30 trường đại học (hỗ trợ lọc miền Bắc/Trung/Nam, tìm kiếm)
+   * Lấy danh sách trường đại học (hỗ trợ lọc miền Bắc/Trung/Nam, tìm kiếm)
    */
   static async getSchools(req, res) {
     try {
@@ -18,13 +17,6 @@ class SchoolController {
         where,
         order: [['region', 'ASC'], ['name', 'ASC']]
       });
-
-      if (!schools || schools.length === 0) {
-        schools = SEED_UNIVERSITIES;
-        if (region) schools = schools.filter(s => s.region === region);
-        if (province) schools = schools.filter(s => s.province === province);
-        if (type) schools = schools.filter(s => s.type === type);
-      }
 
       if (search && search.trim()) {
         const s = search.trim().toLowerCase();
@@ -56,26 +48,24 @@ class SchoolController {
     try {
       const { id } = req.params;
 
-      let school = await University.findByPk(id, {
-        include: [
-          {
-            model: AdmissionScore,
-            as: 'AdmissionScores',
-            include: [{ model: Major, as: 'Major' }]
-          }
-        ]
-      });
+      const include = [
+        {
+          model: AdmissionScore,
+          as: 'AdmissionScores',
+          include: [{ model: Major, as: 'Major' }]
+        }
+      ];
+      let school = await University.findByPk(id, { include });
 
       if (!school) {
-        const seedS = SEED_UNIVERSITIES.find(s => s.id === id || s.code === id);
-        if (!seedS) {
-          return res.status(404).json({ success: false, message: 'Không tìm thấy trường đại học' });
-        }
-        const scores = SEED_ADMISSION_SCORES.filter(as => as.universityId === seedS.id);
-        school = {
-          ...seedS,
-          AdmissionScores: scores
-        };
+        school = await University.findOne({
+          where: { code: id },
+          include
+        });
+      }
+
+      if (!school) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy trường đại học' });
       }
 
       return res.status(200).json({
@@ -104,7 +94,7 @@ class SchoolController {
       if (year) where.admissionYear = parseInt(year, 10);
       if (method) where.admissionMethod = method;
 
-      let scores = await AdmissionScore.findAll({
+      const scores = await AdmissionScore.findAll({
         where,
         include: [
           { model: University, as: 'University' },
@@ -112,13 +102,6 @@ class SchoolController {
         ],
         order: [['admissionYear', 'DESC'], ['cutoffScore', 'DESC']]
       });
-
-      if (!scores || scores.length === 0) {
-        scores = SEED_ADMISSION_SCORES;
-        if (majorId) scores = scores.filter(s => s.majorId === majorId);
-        if (universityId) scores = scores.filter(s => s.universityId === universityId);
-        if (year) scores = scores.filter(s => s.admissionYear === parseInt(year, 10));
-      }
 
       return res.status(200).json({
         success: true,
@@ -136,4 +119,3 @@ class SchoolController {
 }
 
 module.exports = SchoolController;
-

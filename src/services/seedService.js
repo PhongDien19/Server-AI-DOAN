@@ -3,18 +3,9 @@ const {
   Taikhoan,
   NguoiDung,
   Question,
-  Major,
-  MajorProfile,
-  University,
-  AdmissionScore,
   ScoringVersion
 } = require('../models');
-const {
-  SEED_QUESTIONS,
-  SEED_MAJORS,
-  SEED_UNIVERSITIES,
-  SEED_ADMISSION_SCORES
-} = require('../data/seedData');
+const { SEED_QUESTIONS } = require('../data/seedData');
 
 class SeedService {
   /**
@@ -71,58 +62,6 @@ class SeedService {
   }
 
   /**
-   * Khởi tạo Danh mục Ngành & Hồ sơ năng lực ngành (MajorProfiles)
-   */
-  static async seedMajors() {
-    try {
-      const count = await Major.count();
-      if (count === 0) {
-        console.log(`[Seed] Đang nạp ${SEED_MAJORS.length} ngành trọng điểm & Hồ sơ năng lực ngành...`);
-        for (const m of SEED_MAJORS) {
-          await Major.create({
-            id: m.id,
-            name: m.name,
-            category: m.category,
-            description: m.description
-          });
-
-          await MajorProfile.create({
-            majorId: m.id,
-            ...m.profile
-          });
-        }
-        console.log(`✓ [Seed] Đã nạp thành công ${SEED_MAJORS.length} ngành và hồ sơ năng lực MajorProfiles!`);
-      }
-    } catch (e) {
-      console.warn('[Seed] Lỗi nạp ngành học:', e.message);
-    }
-  }
-
-  /**
-   * Khởi tạo 30 Trường đại học và Điểm chuẩn tuyển sinh
-   */
-  static async seedUniversities() {
-    try {
-      const count = await University.count();
-      if (count === 0) {
-        console.log(`[Seed] Đang nạp 30 trường đại học (10 Bắc, 10 Trung, 10 Nam)...`);
-        for (const uni of SEED_UNIVERSITIES) {
-          await University.create(uni);
-        }
-
-        console.log(`[Seed] Đang nạp điểm chuẩn tuyển sinh AdmissionScores...`);
-        for (const score of SEED_ADMISSION_SCORES) {
-          await AdmissionScore.create(score);
-        }
-
-        console.log(`✓ [Seed] Đã nạp 30 trường đại học và các mốc điểm chuẩn thành công!`);
-      }
-    } catch (e) {
-      console.warn('[Seed] Lỗi nạp trường đại học:', e.message);
-    }
-  }
-
-  /**
    * Khởi tạo phiên bản thuật toán chấm điểm ScoringVersion
    */
   static async seedScoringVersion() {
@@ -167,10 +106,7 @@ class SeedService {
     await this.seedDefaultAdmin();
     await this.seedScoringVersion();
     await this.seedQuestions();
-    await this.seedMajors();
-    await this.seedUniversities();
   }
 }
 
 module.exports = SeedService;
-

@@ -1,5 +1,4 @@
 const { Major, MajorProfile, AdmissionScore, University } = require('../models');
-const { SEED_MAJORS } = require('../data/seedData');
 
 class MajorController {
   /**
@@ -15,17 +14,6 @@ class MajorController {
         where,
         include: [{ model: MajorProfile, as: 'Profile' }]
       });
-
-      // Fallback nếu DB rỗng
-      if (!majors || majors.length === 0) {
-        majors = SEED_MAJORS.map(m => ({
-          id: m.id,
-          name: m.name,
-          category: m.category,
-          description: m.description,
-          Profile: m.profile
-        }));
-      }
 
       if (search && search.trim()) {
         const s = search.trim().toLowerCase();
@@ -55,23 +43,12 @@ class MajorController {
     try {
       const { id } = req.params;
 
-      let major = await Major.findByPk(id, {
+      const major = await Major.findByPk(id, {
         include: [{ model: MajorProfile, as: 'Profile' }]
       });
 
       if (!major) {
-        const seedM = SEED_MAJORS.find(m => m.id === id);
-        if (seedM) {
-          major = {
-            id: seedM.id,
-            name: seedM.name,
-            category: seedM.category,
-            description: seedM.description,
-            Profile: seedM.profile
-          };
-        } else {
-          return res.status(404).json({ success: false, message: 'Không tìm thấy ngành đào tạo' });
-        }
+        return res.status(404).json({ success: false, message: 'Không tìm thấy ngành đào tạo' });
       }
 
       // Lấy danh sách trường đào tạo và điểm chuẩn
@@ -105,4 +82,3 @@ class MajorController {
 }
 
 module.exports = MajorController;
-

@@ -5,6 +5,20 @@ const apiRoutes = require('./routes');
 const app = express();
 
 // Middlewares
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+
+  res.on('finish', () => {
+    const durationMs = Date.now() - startedAt;
+    const log = res.statusCode >= 400 ? console.warn : console.log;
+    log(
+      `[HTTP] ${req.method} ${req.path} ${res.statusCode} ${durationMs}ms`
+    );
+  });
+
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -38,4 +52,3 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app;
-

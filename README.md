@@ -26,12 +26,12 @@ Hệ thống được thiết kế theo 4 trụ cột kỹ thuật nhằm đảm
    - Gồm 4 bài test: Tính cách 4 chiều (24 câu *forced-choice*), Holland RIASEC (18 câu *likert 1-5*), Ngoại ngữ (8 câu), Cơ hội việc làm (5 câu - chỉ SV năm 1).
    - Cơ chế **Trust Check** tự động đề xuất hướng giải quyết khi người dùng chưa tin kết quả.
 2. **Thuật toán tất định & Phiên bản hóa:**
-   - Phân định rõ: **AI** sinh câu hỏi và diễn giải kết quả; **Backend** chấm điểm cố định và lưu phiên bản (`ScoringVersion v1.0.0`). Cùng câu trả lời + cùng phiên bản luôn cho ra cùng một kết quả.
+   - Backend cung cấp ngân hàng câu hỏi chuẩn và chấm điểm theo thuật toán có phiên bản (`ScoringVersion v1.0.0`). AI chỉ cá nhân hóa cách diễn đạt câu hỏi theo hồ sơ/ngành mục tiêu, không thay đổi ID, lựa chọn hay quy tắc chấm; nếu AI không khả dụng hoặc trả dữ liệu không hợp lệ, server dùng câu hỏi gốc.
    - Chuẩn hóa toàn bộ thành phần về thang 0 – 100 và tự động tái phân bổ trọng số khi thiếu dữ liệu (ví dụ: học sinh THPT không có phần việc làm).
 3. **Dữ liệu chuẩn hóa:**
    - 10 ngành đào tạo trọng điểm kèm **Hồ sơ năng lực ngành (`MajorProfiles`)** chi tiết.
    - 30 trường đại học đại diện 3 miền Bắc – Trung – Nam.
-   - Bảng điểm chuẩn riêng biệt (`AdmissionScores`) theo từng năm (2024, 2025) và phương thức xét tuyển (THPT, ĐGNL, Học bạ).
+   - Bảng điểm chuẩn riêng biệt (`AdmissionScores`) theo năm và phương thức xét tuyển; dữ liệu mẫu được lưu trong `database.sql`.
 4. **Bảo mật & Quản lý người dùng:**
    - Xác thực JWT Token (Bearer), mã hóa mật khẩu Bcrypt.
    - Phân quyền Admin / User, quản lý lịch sử và hồ sơ cá nhân.
@@ -48,7 +48,7 @@ Server-AI-DOAN/
 │   │   └── database.js             # Kết nối Sequelize (MySQL & SQLite fallback)
 │   │
 │   ├── data/                       # Dữ liệu hạt giống (Seed Data)
-│   │   └── seedData.js             # 60 câu hỏi, 10 MajorProfiles, 30 trường ĐH, điểm chuẩn
+│   │   └── seedData.js             # Ngân hàng câu hỏi
 │   │
 │   ├── models/                     # [MODEL - Sequelize CSDL quan hệ]
 │   │   ├── index.js                # Thiết lập quan hệ (1-1, 1-N) giữa các bảng
@@ -69,12 +69,12 @@ Server-AI-DOAN/
 │   ├── services/                   # [BUSINESS LOGIC SERVICES]
 │   │   ├── scoringService.js       # Thuật toán chấm điểm chuẩn hóa 0-100 & tái phân bổ trọng số
 │   │   ├── assessmentService.js    # Quản lý luồng test, chuyển bài thích ứng & tổng hợp kết quả
-│   │   ├── aiService.js            # Gọi AI sinh câu hỏi theo schema & hỗ trợ giải thích kết quả
+│   │   ├── aiService.js            # Kiểm tra kết nối AI & diễn giải kết quả
 │   │   └── seedService.js          # Tự động nạp dữ liệu khởi tạo khi server khởi động
 │   │
 │   ├── controllers/                # [CONTROLLER - Xử lý nghiệp vụ & Điều hướng]
 │   │   ├── assessmentController.js # Điều khiển bài test (bắt đầu, nộp bài, trust check, kết quả)
-│   │   ├── questionController.js   # Quản lý ngân hàng câu hỏi & sinh câu hỏi AI
+│   │   ├── questionController.js   # Quản lý ngân hàng câu hỏi
 │   │   ├── majorController.js      # Xem danh mục ngành & hồ sơ năng lực MajorProfiles
 │   │   ├── schoolController.js     # Xem 30 trường ĐH (3 miền) & tra cứu điểm chuẩn
 │   │   ├── authController.js       # Xác thực tài khoản (Đăng ký, Đăng nhập, JWT)
@@ -99,6 +99,7 @@ Server-AI-DOAN/
 │
 ├── test_system.js                  # Kịch bản kiểm thử tự động toàn diện hệ thống
 ├── database.sqlite                 # Cơ sở dữ liệu SQLite mặc định (tự sinh)
+├── database.sql                    # Schema toàn bộ bảng & dữ liệu danh mục mẫu cho MySQL/XAMPP
 ├── .env                            # Cấu hình biến môi trường
 ├── package.json                    # Khai báo thư viện & scripts
 └── README.md                       # Tài liệu hướng dẫn sử dụng
@@ -179,20 +180,21 @@ Trong đó:
 
 ## 5. Dữ liệu Nền tảng (Seed Data)
 
-Hệ thống tích hợp sẵn bộ dữ liệu hạt giống phong phú, tự động nạp vào CSDL khi khởi động:
+Hệ thống tự động nạp dữ liệu câu hỏi và cấu hình chấm điểm khi khởi động:
 - **60 câu hỏi chuẩn hóa:**
   - 24 câu Tính cách 4 chiều (E/I: 6, S/N: 6, T/F: 6, J/P: 6 - forced choice, không sao chép MBTI bản quyền).
   - 18 câu Holland (3 câu/nhóm R, I, A, S, E, C - Likert 1-5).
   - 8 câu Ngoại ngữ (Đọc, nói, trắc nghiệm ngữ pháp, chứng chỉ CEFR).
   - 5 câu Cơ hội việc làm (dành riêng SV năm 1).
   - 5 câu Profile (học lực GPA, môn học thế mạnh, tài chính, khu vực).
+- **Danh mục trường, ngành, hồ sơ ngành và điểm chuẩn:** được lưu trong [`database.sql`](./database.sql). Import file này bằng phpMyAdmin trên XAMPP (hoặc chọn database `huong_nghiep_db` trước khi import).
 - **10 ngành nghề trọng điểm & MajorProfiles:**
   - CNTT, Kỹ thuật phần mềm, Quản trị kinh doanh, Marketing, Tài chính - Ngân hàng, Kế toán - Kiểm toán, Ngôn ngữ Anh, Thiết kế đồ họa, Y đa khoa, Logistics & Quản lý chuỗi cung ứng.
 - **30 trường đại học tiêu biểu (Đủ 3 miền Bắc - Trung - Nam):**
   - Miền Bắc (10 trường): Bách Khoa HN, ĐH Công nghệ ĐHQGHN, Kinh tế Quốc dân, Ngoại thương HN, Học viện Bưu chính Viễn thông, ĐH Hà Nội, ĐH Y Hà Nội, ĐH Giao thông Vận tải, FPT HN, Phenikaa.
   - Miền Trung (10 trường): Bách Khoa Đà Nẵng, Kinh tế Đà Nẵng, Ngoại ngữ Đà Nẵng, Sư phạm Kỹ thuật Đà Nẵng, ĐH Duy Tân, FPT Đà Nẵng, ĐH Khoa học Huế, ĐH Kinh tế Huế, ĐH Nha Trang, ĐH Quy Nhơn.
   - Miền Nam (10 trường): Bách Khoa TP.HCM, ĐH Công nghệ Thông tin TP.HCM, ĐH Khoa học Tự nhiên TP.HCM, ĐH Kinh tế TP.HCM (UEH), ĐH Sư phạm Kỹ thuật TP.HCM, ĐH Tôn Đức Thắng, Ngoại thương CS2, ĐH Y Dược TP.HCM, ĐH Cần Thơ, RMIT Việt Nam.
-- **Bảng điểm chuẩn tuyển sinh (`AdmissionScores`):** Dữ liệu điểm chuẩn các năm 2024, 2025 theo các phương thức THPT và ĐGNL.
+- **Bảng điểm chuẩn tuyển sinh (`AdmissionScores`):** Dữ liệu mẫu theo năm tuyển sinh và phương thức xét tuyển được lưu cùng schema trong `database.sql`.
 
 ---
 
@@ -231,6 +233,7 @@ Hệ thống tích hợp sẵn bộ dữ liệu hạt giống phong phú, tự �
 - **Method:** `GET`
 - **URL:** `/api/assessment/:id/section/:sectionType`
 - **Params:** `sectionType` $\in$ `['profile', 'personality', 'holland', 'language', 'career_opportunity']`
+- Server lấy hồ sơ người dùng và ngành mục tiêu để cá nhân hóa câu hỏi theo từng section. Nội dung câu hỏi kiểm tra đáp án ngoại ngữ được giữ nguyên; các ID, lựa chọn và dữ liệu chấm điểm luôn lấy từ ngân hàng chuẩn.
 
 #### • Nộp câu trả lời một section & Chuyển bài
 - **Method:** `POST`
@@ -289,7 +292,6 @@ Hệ thống tích hợp sẵn bộ dữ liệu hạt giống phong phú, tự �
 | `POST` | `/api/questions` | Admin | Thêm câu hỏi mới vào ngân hàng |
 | `PUT` | `/api/questions/:id` | Admin | Cập nhật câu hỏi |
 | `DELETE` | `/api/questions/:id` | Admin | Xóa câu hỏi |
-| `POST` | `/api/questions/generate-ai` | Public | Yêu cầu AI sinh câu hỏi mới theo schema JSON chuẩn |
 
 ---
 
@@ -351,6 +353,10 @@ DB_NAME=huong_nghiep_db
 JWT_SECRET=huong_nghiep_jwt_secret_key_2024
 ```
 
+Khi dùng XAMPP, bật MySQL, import `database.sql` bằng phpMyAdmin, sau đó đặt `DB_DIALECT=mysql` trong `.env` (các biến `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` ở trên phù hợp cấu hình XAMPP mặc định). File SQL tạo cấu trúc cho toàn bộ các model; khi server khởi động, Sequelize đồng bộ cấu trúc và seed câu hỏi, cấu hình chấm điểm cùng tài khoản quản trị mặc định.
+
+Để bật Gemini cá nhân hóa câu hỏi theo hồ sơ/ngành mục tiêu và viết nhận xét kết quả, đặt khóa Google AI trong `GEMINI_API_KEY` và (nếu cần) chọn model qua `GEMINI_MODEL` (mặc định `gemini-2.5-flash`). Câu hỏi kiểm tra đáp án ngoại ngữ được giữ nguyên; nếu Gemini lỗi hoặc trả cấu trúc không hợp lệ, server tự dùng ngân hàng câu hỏi chuẩn. Khi tạo lời khuyên, server thử lại một lần với lỗi tạm thời như HTTP 429/5xx hoặc lỗi kết nối trước khi dùng nhận xét dự phòng. Server gọi Gemini `generateContent`; không commit API key vào Git.
+
 ### 7.4. Khởi chạy Server
 - **Chế độ phát triển (Tự động tải lại khi sửa code):**
   ```bash
@@ -360,6 +366,8 @@ JWT_SECRET=huong_nghiep_jwt_secret_key_2024
   ```bash
   npm start
   ```
+
+Server ghi log mỗi request HTTP trong terminal với method, đường dẫn (không gồm query string), mã trạng thái và thời gian xử lý. Request lỗi từ 400 trở lên được ghi bằng `console.warn`.
 
 > 🔑 **Tài khoản Quản trị viên mặc định:**
 > - **Email:** `phongdien1905@gmail.com`

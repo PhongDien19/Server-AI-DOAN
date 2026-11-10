@@ -5,6 +5,7 @@ const {
   AssessmentResult,
   TrustCheck,
   Question,
+  NguoiDung,
   Major,
   MajorProfile,
   University,
@@ -64,7 +65,7 @@ class AssessmentService {
       throw new Error('Không tìm thấy phiên đánh giá');
     }
 
-    // 1. Thử lấy câu hỏi từ Database
+    // Load the standard question bank first; AI may only personalize its wording.
     let questions = await Question.findAll({
       where: {
         section: sectionType,
@@ -89,14 +90,64 @@ class AssessmentService {
       });
     }
 
+    const profile = assessment.userId
+      ? await NguoiDung.findOne({ where: { userId: assessment.userId } })
+      : null;
+    const targetMajor = assessment.targetMajorId
+      ? await Major.findByPk(assessment.targetMajorId, {
+          include: [{ model: MajorProfile, as: 'Profile' }]
+        })
+      : null;
+    const questionContext = {
+      audience: assessment.audience,
+      educationLevel: profile?.educationLevel || null,
+      interests: profile?.interests || null,
+      targetMajor: targetMajor
+        ? {
+            name: targetMajor.name,
+            category: targetMajor.category,
+            description: targetMajor.description,
+            profile: targetMajor.Profile
+              ? {
+                  skillsRequired: targetMajor.Profile.skillsRequired,
+                  subjectRequirements: targetMajor.Profile.subjectRequirements,
+                  careerPaths: targetMajor.Profile.careerPaths
+                }
+              : null
+          }
+        : profile?.targetMajor
+          ? { name: profile.targetMajor }
+          : null,
+      targetReason: assessment.targetReason || null,
+      certaintyLevel: assessment.certaintyLevel || null
+    };
+
+    const plainQuestions = questions.map(question =>
+      typeof question.toJSON === 'function' ? question.toJSON() : question
+    );
+    const personalizedQuestionTexts =
+      await AIService.personalizeAssessmentQuestions({
+        section: sectionType,
+        questions: plainQuestions,
+        context: questionContext
+      });
+    const finalQuestions = personalizedQuestionTexts
+      ? plainQuestions.map(question => ({
+          ...question,
+          text:
+            personalizedQuestionTexts.get(question.id) ??
+            question.text
+        }))
+      : plainQuestions;
+
     return {
       success: true,
       assessmentId,
       section: sectionType,
       audience: assessment.audience,
       flow: assessment.flow,
-      totalQuestions: questions.length,
-      questions
+      totalQuestions: finalQuestions.length,
+      questions: finalQuestions
     };
   }
 
@@ -320,8 +371,7 @@ class AssessmentService {
     });
 
     // Tính điểm phù hợp cho tất cả các ngành
-    const majorFitList = [];
-    for (const m of majors) {
+    const majorFitList = majors.map(m => {
       const mProfile = m.Profile || {};
       const fit = ScoringService.calculateFitForMajor({
         major: m,
@@ -334,25 +384,37 @@ class AssessmentService {
         flow: assessment.flow,
         audience: assessment.audience
       });
+      return fit;
+    });
 
-      // Lấy danh sách các trường đại học tiêu biểu đào tạo ngành này kèm điểm chuẩn
-      const admissionScores = await AdmissionScore.findAll({
-        where: { majorId: m.id },
-        include: [{ model: University, as: 'University' }],
-        limit: 5
-      });
+    // Load admission data in one query instead of waiting for a query per major.
+    const admissionScores = majors.length
+      ? await AdmissionScore.findAll({
+          where: { majorId: majors.map(major => major.id) },
+          include: [{ model: University, as: 'University' }]
+        })
+      : [];
+    const scoresByMajor = new Map();
+    for (const score of admissionScores) {
+      const majorId = String(score.majorId);
+      if (!scoresByMajor.has(majorId)) {
+        scoresByMajor.set(majorId, []);
+      }
+      scoresByMajor.get(majorId).push(score);
+    }
 
-      fit.suggestedSchools = admissionScores.map(as => ({
-        universityId: as.universityId,
-        universityName: as.University?.name || as.universityId,
-        region: as.University?.region || 'Toàn quốc',
-        cutoffScore: as.cutoffScore,
-        scoreScale: as.scoreScale,
-        admissionMethod: as.admissionMethod,
-        sourceUrl: as.sourceUrl
-      }));
-
-      majorFitList.push(fit);
+    for (const fit of majorFitList) {
+      fit.suggestedSchools = (scoresByMajor.get(String(fit.majorId)) || [])
+        .slice(0, 5)
+        .map(as => ({
+          universityId: as.universityId,
+          universityName: as.University?.name || as.universityId,
+          region: as.University?.region || 'Toàn quốc',
+          cutoffScore: as.cutoffScore,
+          scoreScale: as.scoreScale,
+          admissionMethod: as.admissionMethod,
+          sourceUrl: as.sourceUrl
+        }));
     }
 
     // Sắp xếp các ngành theo điểm phù hợp giảm dần
@@ -369,12 +431,12 @@ class AssessmentService {
       // Danh sách gợi ý gồm: ngành mục tiêu + các ngành liên quan hoặc ngành thay thế
       recommendedMajors = [
         targetFit,
-        ...majorFitList.filter(item => item.majorId !== targetFit.majorId).slice(0, 4)
+        ...majorFitList.filter(item => item.majorId !== targetFit.majorId).slice(0, 9)
       ];
     } else {
-      // Luồng chính: Top 3 - 5 ngành có điểm cao nhất
+      // Luồng chính: Top 10 ngành có điểm cao nhất
       primaryFit = majorFitList[0] || { fitScore: 75, fitLevel: 'Khá phù hợp', actionRecommendation: '' };
-      recommendedMajors = majorFitList.slice(0, 5);
+      recommendedMajors = majorFitList.slice(0, 10);
     }
 
     // Sinh lời khuyên từ AI
@@ -419,4 +481,3 @@ class AssessmentService {
 }
 
 module.exports = AssessmentService;
-

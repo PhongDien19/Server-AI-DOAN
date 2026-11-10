@@ -1,5 +1,4 @@
 const { Question } = require('../models');
-const AIService = require('../services/aiService');
 const { SEED_QUESTIONS } = require('../data/seedData');
 
 class QuestionController {
@@ -163,37 +162,6 @@ class QuestionController {
     }
   }
 
-  /**
-   * Yêu cầu AI sinh câu hỏi mới theo Section và Audience
-   */
-  static async generateAIQuestions(req, res) {
-    try {
-      const { section, audience, count, dimensions } = req.body;
-
-      if (!section) {
-        return res.status(400).json({
-          success: false,
-          message: 'Vui lòng cung cấp section (ví dụ: personality, holland, language)'
-        });
-      }
-
-      const result = await AIService.generateQuestions({
-        section,
-        audience: audience || 'all',
-        count: parseInt(count, 10) || 6,
-        dimensions: dimensions || []
-      });
-
-      return res.status(200).json(result);
-    } catch (error) {
-      console.error('Lỗi generateAIQuestions:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Lỗi khi sinh câu hỏi AI: ' + error.message
-      });
-    }
-  }
 }
 
 module.exports = QuestionController;
-

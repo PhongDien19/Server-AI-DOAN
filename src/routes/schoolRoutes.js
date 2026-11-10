@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const SchoolController = require('../controllers/schoolController');
 
-// Lấy danh sách 30 trường đại học (lọc miền Bắc, Trung, Nam)
+// Lấy danh sách trường đại học (lọc miền Bắc, Trung, Nam)
 router.get('/', SchoolController.getSchools);
 
 // Tra cứu điểm chuẩn tuyển sinh theo ngành, trường, năm
@@ -12,4 +12,3 @@ router.get('/admission-scores', SchoolController.getAdmissionScores);
 router.get('/:id', SchoolController.getSchoolById);
 
 module.exports = router;
-

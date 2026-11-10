@@ -6,9 +6,6 @@ const { verifyAdmin } = require('../middlewares/authMiddleware');
 // Lấy danh sách câu hỏi (hỗ trợ lọc theo section, audience, type)
 router.get('/', QuestionController.getQuestions);
 
-// Yêu cầu AI sinh câu hỏi mới theo schema
-router.post('/generate-ai', QuestionController.generateAIQuestions);
-
 // Lấy chi tiết câu hỏi theo id
 router.get('/:id', QuestionController.getQuestionById);
 
@@ -22,4 +19,3 @@ router.put('/:id', verifyAdmin, QuestionController.updateQuestion);
 router.delete('/:id', verifyAdmin, QuestionController.deleteQuestion);
 
 module.exports = router;
-
