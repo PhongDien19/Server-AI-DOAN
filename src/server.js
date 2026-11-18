@@ -30,11 +30,11 @@ const startServer = async () => {
 
   const aiStatus = await AIService.checkConnection();
   if (!aiStatus.configured) {
-    console.warn('⚠ Chưa cấu hình API key AI; hệ thống sẽ dùng dữ liệu dự phòng.');
+    console.warn(`⚠ AI chưa được cấu hình${aiStatus.error ? `: ${aiStatus.error}` : ''}; hệ thống sẽ dùng dữ liệu dự phòng.`);
   } else if (aiStatus.connected) {
-    console.log('✓ Kết nối dịch vụ AI thành công!');
+    console.log(`✓ Kết nối AI ${aiStatus.provider}${aiStatus.model ? ` (model: ${aiStatus.model})` : ''} thành công!`);
   } else {
-    console.error(`✗ Kết nối dịch vụ AI thất bại: ${aiStatus.error}. Hệ thống sẽ dùng dữ liệu dự phòng.`);
+    console.warn(`⚠ Không kết nối được AI ${aiStatus.provider}${aiStatus.model ? ` (model: ${aiStatus.model})` : ''}: ${aiStatus.error}. Hệ thống sẽ dùng dữ liệu dự phòng.`);
   }
 
   app.listen(PORT, '0.0.0.0', () => {

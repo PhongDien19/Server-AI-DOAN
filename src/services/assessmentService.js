@@ -184,7 +184,28 @@ class AssessmentService {
       sectionScore = hResult.averageScore;
       scoreDetails = hResult;
     } else if (sectionType === 'language') {
-      const lResult = ScoringService.calculateLanguage(answers);
+      const languageQuestions = await Question.findAll({
+        where: { section: 'language' }
+      });
+      const questionsById = new Map(
+        languageQuestions.map(question => [question.id, question])
+      );
+      for (const question of SEED_QUESTIONS) {
+        if (question.section === 'language' && !questionsById.has(question.id)) {
+          questionsById.set(question.id, question);
+        }
+      }
+      const verifiedAnswers = answers.map(answer => {
+        const question = questionsById.get(answer.questionId);
+        const selectedOption = question?.options?.find(
+          option => option.id === String(answer.userAnswer)
+        );
+        return {
+          ...answer,
+          isCorrect: selectedOption?.isCorrect === true
+        };
+      });
+      const lResult = ScoringService.calculateLanguage(verifiedAnswers);
       sectionScore = lResult.score;
       scoreDetails = lResult;
     } else if (sectionType === 'career_opportunity') {

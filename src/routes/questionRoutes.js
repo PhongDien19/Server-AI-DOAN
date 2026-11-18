@@ -6,6 +6,9 @@ const { verifyAdmin } = require('../middlewares/authMiddleware');
 // Lấy danh sách câu hỏi (hỗ trợ lọc theo section, audience, type)
 router.get('/', QuestionController.getQuestions);
 
+// Dùng AI tạo và lưu câu hỏi tiếng Anh (yêu cầu quyền Admin)
+router.post('/generate-english', verifyAdmin, QuestionController.generateEnglishQuestions);
+
 // Lấy chi tiết câu hỏi theo id
 router.get('/:id', QuestionController.getQuestionById);
 

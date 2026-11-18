@@ -130,8 +130,7 @@ class ScoringService {
       } else if (!isNaN(parseFloat(ans.userAnswer))) {
         scoreVal = parseFloat(ans.userAnswer);
       } else {
-        // Kiểm tra đúng sai trắc nghiệm
-        scoreVal = ans.isCorrect || ans.userAnswer === 'A' ? 100 : 0;
+        scoreVal = ans.isCorrect === true ? 100 : 0;
       }
 
       totalScore += scoreVal;

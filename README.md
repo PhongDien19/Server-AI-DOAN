@@ -26,7 +26,7 @@ Hệ thống được thiết kế theo 4 trụ cột kỹ thuật nhằm đảm
    - Gồm 4 bài test: Tính cách 4 chiều (24 câu *forced-choice*), Holland RIASEC (18 câu *likert 1-5*), Ngoại ngữ (8 câu), Cơ hội việc làm (5 câu - chỉ SV năm 1).
    - Cơ chế **Trust Check** tự động đề xuất hướng giải quyết khi người dùng chưa tin kết quả.
 2. **Thuật toán tất định & Phiên bản hóa:**
-   - Backend cung cấp ngân hàng câu hỏi chuẩn và chấm điểm theo thuật toán có phiên bản (`ScoringVersion v1.0.0`). AI chỉ cá nhân hóa cách diễn đạt câu hỏi theo hồ sơ/ngành mục tiêu, không thay đổi ID, lựa chọn hay quy tắc chấm; nếu AI không khả dụng hoặc trả dữ liệu không hợp lệ, server dùng câu hỏi gốc.
+   - Backend cung cấp ngân hàng câu hỏi chuẩn và chấm điểm theo thuật toán có phiên bản (`ScoringVersion v1.0.0`). Gemini hoặc DeepSeek chỉ cá nhân hóa cách diễn đạt câu hỏi, không thay đổi ID, lựa chọn hay quy tắc chấm; nếu AI không khả dụng hoặc trả dữ liệu không hợp lệ, server dùng câu hỏi gốc.
    - Chuẩn hóa toàn bộ thành phần về thang 0 – 100 và tự động tái phân bổ trọng số khi thiếu dữ liệu (ví dụ: học sinh THPT không có phần việc làm).
 3. **Dữ liệu chuẩn hóa:**
    - 10 ngành đào tạo trọng điểm kèm **Hồ sơ năng lực ngành (`MajorProfiles`)** chi tiết.
@@ -289,9 +289,20 @@ Hệ thống tự động nạp dữ liệu câu hỏi và cấu hình chấm đ
 | :--- | :--- | :---: | :--- |
 | `GET` | `/api/questions` | Public | Lấy danh sách câu hỏi (hỗ trợ lọc `section`, `audience`, `type`) |
 | `GET` | `/api/questions/:id` | Public | Xem chi tiết một câu hỏi |
+| `POST` | `/api/questions/generate-english` | Admin | Dùng AI tạo và lưu 1-10 câu hỏi trắc nghiệm tiếng Anh |
 | `POST` | `/api/questions` | Admin | Thêm câu hỏi mới vào ngân hàng |
 | `PUT` | `/api/questions/:id` | Admin | Cập nhật câu hỏi |
 | `DELETE` | `/api/questions/:id` | Admin | Xóa câu hỏi |
+
+Request body tùy chọn:
+```json
+{
+  "count": 5,
+  "topic": "mixed",
+  "difficulty": "intermediate"
+}
+```
+`topic` nhận `grammar`, `vocabulary`, `reading` hoặc `mixed`; `difficulty` nhận `easy`, `intermediate` hoặc `advanced`. Câu hỏi được lưu vào ngân hàng phần `language`, xuất hiện trong bài đánh giá tiếp theo và được chấm đáp án ở phía máy chủ. Cần cấu hình `AI_PROVIDER` cùng API key tương ứng (`GEMINI_API_KEY` hoặc `DEEPSEEK_API_KEY`).
 
 ---
 
@@ -351,11 +362,18 @@ DB_PASS=
 DB_NAME=huong_nghiep_db
 
 JWT_SECRET=huong_nghiep_jwt_secret_key_2024
+
+# Chọn gemini (mặc định) hoặc deepseek
+AI_PROVIDER=gemini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash-lite
+# DEEPSEEK_API_KEY=
+# DEEPSEEK_MODEL=deepseek-chat
 ```
 
 Khi dùng XAMPP, bật MySQL, import `database.sql` bằng phpMyAdmin, sau đó đặt `DB_DIALECT=mysql` trong `.env` (các biến `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` ở trên phù hợp cấu hình XAMPP mặc định). File SQL tạo cấu trúc cho toàn bộ các model; khi server khởi động, Sequelize đồng bộ cấu trúc và seed câu hỏi, cấu hình chấm điểm cùng tài khoản quản trị mặc định.
 
-Để bật Gemini cá nhân hóa câu hỏi theo hồ sơ/ngành mục tiêu và viết nhận xét kết quả, đặt khóa Google AI trong `GEMINI_API_KEY` và (nếu cần) chọn model qua `GEMINI_MODEL` (mặc định `gemini-2.5-flash`). Câu hỏi kiểm tra đáp án ngoại ngữ được giữ nguyên; nếu Gemini lỗi hoặc trả cấu trúc không hợp lệ, server tự dùng ngân hàng câu hỏi chuẩn. Khi tạo lời khuyên, server thử lại một lần với lỗi tạm thời như HTTP 429/5xx hoặc lỗi kết nối trước khi dùng nhận xét dự phòng. Server gọi Gemini `generateContent`; không commit API key vào Git.
+Để dùng Gemini, đặt `GEMINI_API_KEY` và tùy chọn model qua `GEMINI_MODEL`. Để chuyển sang DeepSeek, đặt `AI_PROVIDER=deepseek`, cấu hình `DEEPSEEK_API_KEY` và tùy chọn model qua `DEEPSEEK_MODEL` (mặc định `deepseek-chat`). Câu hỏi kiểm tra đáp án ngoại ngữ được giữ nguyên; nếu nhà cung cấp AI lỗi hoặc trả cấu trúc không hợp lệ, server dùng ngân hàng câu hỏi chuẩn. Khi tạo lời khuyên, server thử lại một lần với lỗi tạm thời như HTTP 429/5xx hoặc lỗi kết nối trước khi dùng nhận xét dự phòng. Không commit API key vào Git.
 
 ### 7.4. Khởi chạy Server
 - **Chế độ phát triển (Tự động tải lại khi sửa code):**
