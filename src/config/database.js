@@ -5,6 +5,7 @@ require('dotenv').config();
 const dialect = process.env.DB_DIALECT || 'sqlite';
 const dbStorage = process.env.DB_STORAGE || path.join(__dirname, '../../database.sqlite');
 
+// Dùng MySQL nếu DB_DIALECT là "mysql", còn lại dùng SQLite.
 let sequelize;
 
 if (dialect === 'mysql') {

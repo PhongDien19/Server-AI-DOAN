@@ -1,7 +1,7 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "description": "Server Quản lý Tài khoản (Mô hình MVC)",
+  "description": "Server Quản lý Tài khoản với Express",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -9,7 +9,6 @@
   },
   "keywords": [
     "account-management",
-    "mvc",
     "express",
     "sequelize"
   ],
@@ -17,7 +16,6 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "axios": "^1.21.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",

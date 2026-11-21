@@ -1,6 +1,6 @@
-# Hệ Thống Server Trắc Nghiệm Hướng Nghiệp AI (Kiến Trúc MVC)
+# Hệ Thống Server Trắc Nghiệm Hướng Nghiệp AI
 
-> **Backend API Hướng Nghiệp Toàn Diện** dành cho **Học sinh THPT** và **Sinh viên năm nhất**, xây dựng trên nền tảng **Node.js (Express)**, **Sequelize ORM** (hỗ trợ **MySQL & SQLite**) theo chuẩn kiến trúc **MVC (Model - View - Controller)**.
+> **Backend API Hướng Nghiệp Toàn Diện** dành cho **Học sinh THPT** và **Sinh viên năm nhất**, xây dựng trên nền tảng **Node.js (Express)**, **Sequelize ORM** (hỗ trợ **MySQL & SQLite**). Endpoint được khai báo tập trung trong `src/routes/danhSachDuongDan.js`; xử lý được chia theo nghiệp vụ trong `src/xuLy/`.
 > Hệ thống được hiện thực hóa dựa trên tài liệu đặc tả nghiệp vụ và đề xuất cải tiến kỹ thuật hướng nghiệp.
 
 ---
@@ -26,7 +26,7 @@ Hệ thống được thiết kế theo 4 trụ cột kỹ thuật nhằm đảm
    - Gồm 4 bài test: Tính cách 4 chiều (24 câu *forced-choice*), Holland RIASEC (18 câu *likert 1-5*), Ngoại ngữ (8 câu), Cơ hội việc làm (5 câu - chỉ SV năm 1).
    - Cơ chế **Trust Check** tự động đề xuất hướng giải quyết khi người dùng chưa tin kết quả.
 2. **Thuật toán tất định & Phiên bản hóa:**
-   - Backend cung cấp ngân hàng câu hỏi chuẩn và chấm điểm theo thuật toán có phiên bản (`ScoringVersion v1.0.0`). Gemini hoặc DeepSeek chỉ cá nhân hóa cách diễn đạt câu hỏi, không thay đổi ID, lựa chọn hay quy tắc chấm; nếu AI không khả dụng hoặc trả dữ liệu không hợp lệ, server dùng câu hỏi gốc.
+   - Backend cung cấp ngân hàng câu hỏi chuẩn và chấm điểm theo thuật toán có phiên bản (`PhienBanChamDiem v1.0.0`). DeepSeek chỉ cá nhân hóa cách diễn đạt câu hỏi, không thay đổi ID, lựa chọn hay quy tắc chấm; nếu AI không khả dụng hoặc trả dữ liệu không hợp lệ, server dùng câu hỏi gốc.
    - Chuẩn hóa toàn bộ thành phần về thang 0 – 100 và tự động tái phân bổ trọng số khi thiếu dữ liệu (ví dụ: học sinh THPT không có phần việc làm).
 3. **Dữ liệu chuẩn hóa:**
    - 10 ngành đào tạo trọng điểm kèm **Hồ sơ năng lực ngành (`MajorProfiles`)** chi tiết.
@@ -47,61 +47,48 @@ Server-AI-DOAN/
 │   ├── config/                     # Cấu hình hệ thống & cơ sở dữ liệu
 │   │   └── database.js             # Kết nối Sequelize (MySQL & SQLite fallback)
 │   │
-│   ├── data/                       # Dữ liệu hạt giống (Seed Data)
-│   │   └── seedData.js             # Ngân hàng câu hỏi
+│   ├── data/                       # Dữ liệu hạt giống
+│   │   └── duLieuMau.js            # Ngân hàng câu hỏi
 │   │
 │   ├── models/                     # [MODEL - Sequelize CSDL quan hệ]
-│   │   ├── index.js                # Thiết lập quan hệ (1-1, 1-N) giữa các bảng
-│   │   ├── Taikhoan.js             # Tài khoản người dùng (bảng taikhoan)
+│   │   ├── danhSachModel.js        # Khai báo model và thiết lập quan hệ
+│   │   ├── TaiKhoanNguoiDung.js    # Tài khoản người dùng (bảng taikhoan)
 │   │   ├── NguoiDung.js            # Hồ sơ cá nhân (bảng nguoidung)
-│   │   ├── Assessment.js           # Phiên làm bài test (bảng danhgia_phien)
-│   │   ├── AssessmentSection.js    # Điểm thành phần bài test (bảng danhgia_thanhphan)
-│   │   ├── AssessmentResponse.js   # Câu trả lời của người dùng (bảng danhgia_cautraloi)
-│   │   ├── AssessmentResult.js     # Kết quả tổng hợp cuối cùng (bảng danhgia_ketqua)
-│   │   ├── TrustCheck.js           # Ghi nhận độ tin cậy (bảng danhgia_trustcheck)
-│   │   ├── Question.js             # Ngân hàng câu hỏi (bảng nganhang_cauhoi)
-│   │   ├── Major.js                # Danh mục ngành đào tạo (bảng danhmuc_nganh)
-│   │   ├── MajorProfile.js         # Hồ sơ năng lực ngành (bảng danhmuc_hoso_nganh)
-│   │   ├── University.js           # 30 trường đại học (bảng danhmuc_truong)
-│   │   ├── AdmissionScore.js       # Điểm chuẩn tuyển sinh (bảng danhmuc_diemchuan)
-│   │   └── ScoringVersion.js       # Quản lý phiên bản thuật toán (bảng danhmuc_phienban_cham)
+│   │   ├── PhienDanhGia.js         # Phiên làm bài đánh giá
+│   │   ├── PhanDanhGia.js          # Điểm từng phần đánh giá
+│   │   ├── CauTraLoiDanhGia.js     # Câu trả lời của người dùng
+│   │   ├── KetQuaDanhGia.js        # Kết quả tổng hợp
+│   │   ├── KiemTraDoTinCay.js      # Phản hồi độ tin cậy
+│   │   ├── CauHoi.js               # Ngân hàng câu hỏi
+│   │   ├── Nganh.js                # Danh mục ngành đào tạo
+│   │   ├── HoSoNganh.js            # Hồ sơ năng lực ngành
+│   │   ├── TruongDaiHoc.js         # Danh mục trường đại học
+│   │   ├── DiemChuan.js            # Điểm chuẩn tuyển sinh
+│   │   └── PhienBanChamDiem.js     # Phiên bản thuật toán chấm điểm
 │   │
-│   ├── services/                   # [BUSINESS LOGIC SERVICES]
-│   │   ├── scoringService.js       # Thuật toán chấm điểm chuẩn hóa 0-100 & tái phân bổ trọng số
-│   │   ├── assessmentService.js    # Quản lý luồng test, chuyển bài thích ứng & tổng hợp kết quả
-│   │   ├── aiService.js            # Kiểm tra kết nối AI & diễn giải kết quả
-│   │   └── seedService.js          # Tự động nạp dữ liệu khởi tạo khi server khởi động
+│   ├── services/                   # Dịch vụ dùng chung
+│   │   ├── dichVuChamDiem.js       # Thuật toán chấm điểm
+│   │   ├── dichVuDanhGia.js        # Quy trình đánh giá
+│   │   ├── dichVuAI.js             # Tích hợp AI
+│   │   └── dichVuNapDuLieu.js      # Nạp dữ liệu khởi tạo
 │   │
-│   ├── controllers/                # [CONTROLLER - Xử lý nghiệp vụ & Điều hướng]
-│   │   ├── assessmentController.js # Điều khiển bài test (bắt đầu, nộp bài, trust check, kết quả)
-│   │   ├── questionController.js   # Quản lý ngân hàng câu hỏi
-│   │   ├── majorController.js      # Xem danh mục ngành & hồ sơ năng lực MajorProfiles
-│   │   ├── schoolController.js     # Xem 30 trường ĐH (3 miền) & tra cứu điểm chuẩn
-│   │   ├── authController.js       # Xác thực tài khoản (Đăng ký, Đăng nhập, JWT)
-│   │   ├── accountController.js    # Quản trị tài khoản Admin (CRUD, phân trang, thống kê)
-│   │   └── profileController.js    # Quản lý hồ sơ cá nhân
+│   ├── routes/
+│   │   └── danhSachDuongDan.js     # Tất cả endpoint API
 │   │
-│   ├── routes/                     # [ROUTER / API ENDPOINTS]
-│   │   ├── index.js                # Router tổng hợp toàn bộ API
-│   │   ├── assessmentRoutes.js     # Endpoints /api/assessment
-│   │   ├── questionRoutes.js       # Endpoints /api/questions
-│   │   ├── majorRoutes.js          # Endpoints /api/majors
-│   │   ├── schoolRoutes.js         # Endpoints /api/schools
-│   │   ├── authRoutes.js           # Endpoints /api/auth
-│   │   ├── accountRoutes.js        # Endpoints /api/accounts
-│   │   └── profileRoutes.js        # Endpoints /api/profile
+│   ├── xuLy/                       # Hàm xử lý endpoint, chia theo nghiệp vụ
+│   │   ├── taiKhoan/
+│   │   ├── xacThuc/
+│   │   ├── danhGia/
+│   │   ├── hoSo/
+│   │   ├── cauHoi/
+│   │   ├── nganh/
+│   │   └── truong/
 │   │
 │   ├── middlewares/
-│   │   └── authMiddleware.js       # Xác thực JWT Bearer Token & phân quyền Admin
-│   │
-│   ├── app.js                      # Cấu hình Express App, CORS, Body-parser, Error Handler
-│   └── server.js                   # Điểm khởi động Server, kết nối DB & nạp seed data
+│   │   └── xacThuc.js              # Xác thực JWT và phân quyền Admin
+│   ├── ungDung.js                  # Cấu hình Express
+│   └── server.js                   # Khởi động server
 │
-├── test_system.js                  # Kịch bản kiểm thử tự động toàn diện hệ thống
-├── database.sqlite                 # Cơ sở dữ liệu SQLite mặc định (tự sinh)
-├── database.sql                    # Schema toàn bộ bảng & dữ liệu danh mục mẫu cho MySQL/XAMPP
-├── .env                            # Cấu hình biến môi trường
-├── package.json                    # Khai báo thư viện & scripts
 └── README.md                       # Tài liệu hướng dẫn sử dụng
 ```
 
@@ -302,7 +289,7 @@ Request body tùy chọn:
   "difficulty": "intermediate"
 }
 ```
-`topic` nhận `grammar`, `vocabulary`, `reading` hoặc `mixed`; `difficulty` nhận `easy`, `intermediate` hoặc `advanced`. Câu hỏi được lưu vào ngân hàng phần `language`, xuất hiện trong bài đánh giá tiếp theo và được chấm đáp án ở phía máy chủ. Cần cấu hình `AI_PROVIDER` cùng API key tương ứng (`GEMINI_API_KEY` hoặc `DEEPSEEK_API_KEY`).
+`topic` nhận `grammar`, `vocabulary`, `reading` hoặc `mixed`; `difficulty` nhận `easy`, `intermediate` hoặc `advanced`. Câu hỏi được lưu vào ngân hàng phần `language`, xuất hiện trong bài đánh giá tiếp theo và được chấm đáp án ở phía máy chủ. Cần cấu hình `DEEPSEEK_API_KEY`.
 
 ---
 
@@ -363,17 +350,15 @@ DB_NAME=huong_nghiep_db
 
 JWT_SECRET=huong_nghiep_jwt_secret_key_2024
 
-# Chọn gemini (mặc định) hoặc deepseek
-AI_PROVIDER=gemini
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash-lite
-# DEEPSEEK_API_KEY=
-# DEEPSEEK_MODEL=deepseek-chat
+# Nhà cung cấp AI duy nhất
+AI_PROVIDER=deepseek
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-chat
 ```
 
 Khi dùng XAMPP, bật MySQL, import `database.sql` bằng phpMyAdmin, sau đó đặt `DB_DIALECT=mysql` trong `.env` (các biến `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` ở trên phù hợp cấu hình XAMPP mặc định). File SQL tạo cấu trúc cho toàn bộ các model; khi server khởi động, Sequelize đồng bộ cấu trúc và seed câu hỏi, cấu hình chấm điểm cùng tài khoản quản trị mặc định.
 
-Để dùng Gemini, đặt `GEMINI_API_KEY` và tùy chọn model qua `GEMINI_MODEL`. Để chuyển sang DeepSeek, đặt `AI_PROVIDER=deepseek`, cấu hình `DEEPSEEK_API_KEY` và tùy chọn model qua `DEEPSEEK_MODEL` (mặc định `deepseek-chat`). Câu hỏi kiểm tra đáp án ngoại ngữ được giữ nguyên; nếu nhà cung cấp AI lỗi hoặc trả cấu trúc không hợp lệ, server dùng ngân hàng câu hỏi chuẩn. Khi tạo lời khuyên, server thử lại một lần với lỗi tạm thời như HTTP 429/5xx hoặc lỗi kết nối trước khi dùng nhận xét dự phòng. Không commit API key vào Git.
+Đặt `AI_PROVIDER=deepseek`, cấu hình `DEEPSEEK_API_KEY` và tùy chọn model qua `DEEPSEEK_MODEL` (mặc định `deepseek-chat`). Câu hỏi kiểm tra đáp án ngoại ngữ được giữ nguyên; nếu DeepSeek lỗi hoặc trả cấu trúc không hợp lệ, server dùng ngân hàng câu hỏi chuẩn. Khi tạo lời khuyên, server thử lại một lần với lỗi tạm thời như HTTP 429/5xx hoặc lỗi kết nối trước khi dùng nhận xét dự phòng. Không commit API key vào Git.
 
 ### 7.4. Khởi chạy Server
 - **Chế độ phát triển (Tự động tải lại khi sửa code):**
@@ -396,13 +381,4 @@ Server ghi log mỗi request HTTP trong terminal với method, đường dẫn (
 
 ## 8. Kiểm thử Hệ thống
 
-Dự án tích hợp sẵn kịch bản kiểm thử toàn diện [`test_system.js`](file:///d:/New%20folder/Server-AI-DOAN/test_system.js) mô phỏng từ đầu đến cuối cả **Luồng chính (Khám phá)** và **Luồng B (Ngành mục tiêu)**:
-
-```bash
-node test_system.js
-```
-
-**Kịch bản kiểm thử bao gồm:**
-1. Khởi tạo CSDL và tự động nạp toàn bộ Seed Data (Câu hỏi, Ngành, Trường, Điểm chuẩn).
-2. Kiểm thử Luồng chính: Profile $\rightarrow$ Tính cách (MBTI INTJ, độ rõ 50%) $\rightarrow$ Holland RIASEC $\rightarrow$ Ngoại ngữ $\rightarrow$ Trust Check 5 sao $\rightarrow$ Tổng hợp Top ngành gợi ý.
-3. Kiểm thử Luồng B: Chọn ngành mục tiêu CNTT $\rightarrow$ Chấm điểm phù hợp 71/100 (Khá phù hợp) $\rightarrow$ Đưa ra khuyến nghị & gợi ý trường đại học tiêu biểu (Bách Khoa HN, Công nghệ ĐHQGHN, Bưu chính Viễn thông).
+Repository hiện không có script kiểm thử tự động. Danh sách endpoint và quyền truy cập được mô tả tại mục 6; có thể kiểm tra bằng Postman sau khi khởi chạy server.

@@ -1,6 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
+// Model mô tả thông tin hồ sơ gắn với một tài khoản.
 const NguoiDung = sequelize.define('NguoiDung', {
   id: {
     type: DataTypes.INTEGER,
