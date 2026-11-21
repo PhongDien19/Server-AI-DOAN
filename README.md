@@ -265,6 +265,14 @@ Hệ thống tự động nạp dữ liệu câu hỏi và cấu hình chấm đ
 - **URL:** `/api/assessment/:id/result`
 - **Response:** Trả về điểm phù hợp, MBTI type, Holland top code, Top 3-5 ngành gợi ý, điểm mạnh, điểm cần cải thiện và danh sách trường ĐH đào tạo kèm điểm chuẩn.
 
+#### • So sánh hai bài test
+- **Method:** `GET`
+- **URL:** `/api/assessment/:id/compare/:otherId`
+- Chỉ so sánh hai bài đã hoàn thành của cùng một người dùng; API tự sắp xếp theo thời gian tạo bài.
+- Chênh lệch dưới 5 điểm được xem là ổn định. Các trường `direction` (`increase`, `decrease`, `stable`) và `color` (`green`, `red`, `gray`) dùng để hiển thị xu hướng điểm.
+- Response gồm mức độ phù hợp, ngoại ngữ, học tập, cơ hội nghề nghiệp, sáu điểm và mã Holland, các chiều MBTI, cùng danh sách ngành mới/mất/giữ lại. Nếu hai bài cách nhau dưới 3 ngày, response có `shortIntervalNote`.
+- Các nhận xét chỉ mang tính tham khảo; ngành xuất hiện ở cả hai lần được ưu tiên cân nhắc, ngành mới hoặc không còn chỉ là gợi ý cần tìm hiểu thêm.
+
 #### • Lấy lịch sử làm bài
 - **Method:** `GET`
 - **URL:** `/api/assessment/history/:userId`

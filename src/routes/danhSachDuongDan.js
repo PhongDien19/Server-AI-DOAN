@@ -27,6 +27,7 @@ const nopCauTraLoiPhan = require('../xuLy/danhGia/nopCauTraLoiPhan');
 const guiDanhGiaDoTinCay = require('../xuLy/danhGia/guiDanhGiaDoTinCay');
 const layKetQuaDanhGia = require('../xuLy/danhGia/layKetQuaDanhGia');
 const layLichSuDanhGia = require('../xuLy/danhGia/layLichSuDanhGia');
+const soSanhBaiDanhGia = require('../xuLy/danhGia/soSanhBaiDanhGia');
 const layHoSoNguoiDung = require('../xuLy/hoSo/layHoSoNguoiDung');
 const capNhatHoSoNguoiDung = require('../xuLy/hoSo/capNhatHoSoNguoiDung');
 const layDanhSachCauHoi = require('../xuLy/cauHoi/layDanhSachCauHoi');
@@ -66,6 +67,7 @@ router.get('/api/assessment/:id/section/:sectionType', layCauHoiTheoPhan);
 router.post('/api/assessment/:id/submit-section', nopCauTraLoiPhan);
 router.post('/api/assessment/:id/trust-check', guiDanhGiaDoTinCay);
 router.get('/api/assessment/:id/result', layKetQuaDanhGia);
+router.get('/api/assessment/:id/compare/:otherId', soSanhBaiDanhGia);
 router.get('/api/assessment/history/:userId', layLichSuDanhGia);
 
 // Ngan hang cau hoi
