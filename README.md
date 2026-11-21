@@ -122,7 +122,7 @@ Dành cho người dùng chưa xác định rõ ngành học:
    │                           ├─ Điểm 1-2 sao ──► Đề xuất bài test chưa làm / tư vấn
    │                           └─ Điểm >= 3 sao ─► Chấp nhận kết quả
    ▼
-[Bước 7: Kết quả tổng hợp] ─► Gợi ý Top 3 - 5 ngành có fitScore cao nhất kèm:
+[Bước 7: Kết quả tổng hợp] ─► Gợi ý tất cả ngành trong danh mục theo fitScore kèm:
                                ├─ Điểm mạnh & Điểm cần cải thiện
                                ├─ Lộ trình phát triển & Lời khuyên AI
                                └─ Danh sách trường đại học đào tạo + Điểm chuẩn
@@ -138,8 +138,8 @@ Dành cho người dùng đã nhắm sẵn một ngành cụ thể:
 | :---: | :---: | :--- |
 | **75 – 100** | **Rất phù hợp** | Xác nhận ngành, gợi ý trường đào tạo tiêu biểu và lộ trình phát triển. |
 | **55 – 74** | **Khá phù hợp** | Xác nhận ngành, chỉ rõ các điểm cần cải thiện (kỹ năng, ngoại ngữ). |
-| **40 – 54** | **Phù hợp một phần** | Hiển thị đánh giá chi tiết, gợi ý thêm 2 – 3 ngành liên quan gần (`related_majors`). |
-| **Dưới 40** | **Chưa phù hợp** | Gợi ý 3 – 5 ngành khác có mức độ tương thích cao hơn. |
+| **40 – 54** | **Phù hợp một phần** | Hiển thị đánh giá chi tiết và các ngành liên quan có trong danh mục. |
+| **Dưới 40** | **Chưa phù hợp** | Có thể tham khảo các ngành khác trong danh sách; đây không phải kết luận bắt buộc. |
 
 ---
 
@@ -263,7 +263,7 @@ Hệ thống tự động nạp dữ liệu câu hỏi và cấu hình chấm đ
 #### • Lấy kết quả toàn diện bài test
 - **Method:** `GET`
 - **URL:** `/api/assessment/:id/result`
-- **Response:** Trả về điểm phù hợp, MBTI type, Holland top code, Top 3-5 ngành gợi ý, điểm mạnh, điểm cần cải thiện và danh sách trường ĐH đào tạo kèm điểm chuẩn.
+- **Response:** Trả về điểm phù hợp, MBTI type, sáu điểm Holland, thông tin chi tiết từng phần đánh giá, điểm mạnh/điểm cần tìm hiểu thêm, cùng danh sách tất cả ngành trong danh mục được xếp theo độ phù hợp và trường đào tạo kèm điểm chuẩn. Số ngành gợi ý phụ thuộc vào dữ liệu ngành có trong database.
 
 #### • So sánh hai bài test
 - **Method:** `GET`

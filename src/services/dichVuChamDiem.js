@@ -306,16 +306,16 @@ const ScoringService = {
 
     if (totalFitScore >= 75) {
       fitLevel = 'Rất phù hợp';
-      actionRecommendation = `Xác nhận ngành ${major.name} rất phù hợp với sở thích và năng lực của bạn. Đề xuất trường đào tạo hàng đầu và lộ trình phát triển.`;
+      actionRecommendation = `Ngành ${major.name} có nhiều điểm tương thích theo bài đánh giá hiện tại. Bạn có thể tìm hiểu thêm chương trình học, môi trường làm việc và trường đào tạo trước khi cân nhắc.`;
     } else if (totalFitScore >= 55) {
       fitLevel = 'Khá phù hợp';
-      actionRecommendation = `Ngành ${major.name} khá phù hợp. Bạn cần cải thiện thêm kỹ năng chuyên môn và ngoại ngữ để đạt hiệu quả cao nhất.`;
+      actionRecommendation = `Ngành ${major.name} có một số điểm tương thích. Hãy xem các điểm mạnh và nội dung cần tìm hiểu thêm để cân nhắc mức độ phù hợp với mình.`;
     } else if (totalFitScore >= 40) {
       fitLevel = 'Phù hợp một phần';
-      actionRecommendation = `Bạn có một số điểm tương đồng với ngành ${major.name}, nhưng nên cân nhắc thêm các ngành liên quan gần (${(majorProfile.relatedMajors || []).join(', ')}).`;
+      actionRecommendation = `Bạn có một số điểm tương đồng với ngành ${major.name}. Có thể tham khảo thêm các ngành liên quan (${(majorProfile.relatedMajors || []).join(', ')}) và tìm hiểu thực tế chương trình học, công việc.`;
     } else {
       fitLevel = 'Chưa phù hợp';
-      actionRecommendation = `Mức độ phù hợp với ngành ${major.name} còn hạn chế. Hệ thống đề xuất bạn tham khảo 3 - 5 ngành nghề khác phù hợp hơn.`;
+      actionRecommendation = `Điểm tương thích với ngành ${major.name} hiện còn hạn chế theo dữ liệu bài test. Bạn có thể tìm hiểu thêm các ngành khác trong danh sách; kết quả không phải kết luận bắt buộc.`;
     }
 
     // Điểm mạnh & Điểm cần cải thiện

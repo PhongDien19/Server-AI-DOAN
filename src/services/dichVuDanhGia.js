@@ -15,6 +15,71 @@ const ScoringService = require('./dichVuChamDiem');
 const AIService = require('./dichVuAI');
 const { SEED_QUESTIONS } = require('../data/duLieuMau');
 
+const THONG_TIN_PHAN_DANH_GIA = [
+  { sectionType: 'profile', label: 'Năng lực học tập' },
+  { sectionType: 'personality', label: 'Tính cách MBTI' },
+  { sectionType: 'holland', label: 'Sở thích Holland' },
+  { sectionType: 'language', label: 'Ngoại ngữ' },
+  { sectionType: 'career_opportunity', label: 'Cơ hội nghề nghiệp' }
+];
+
+const danhSachNganhDaDuocGoiYDayDu = (ketQua, danhSachNganh) => {
+  const nganhDaGoiY = Array.isArray(ketQua.recommendedMajors)
+    ? ketQua.recommendedMajors
+    : [];
+  const maNganhDaGoiY = new Set(
+    nganhDaGoiY
+      .map(nganh => nganh.majorId ?? nganh.id)
+      .filter(id => id !== null && id !== undefined)
+      .map(String)
+  );
+
+  return maNganhDaGoiY.size === danhSachNganh.length &&
+    danhSachNganh.every(nganh => maNganhDaGoiY.has(String(nganh.id)));
+};
+
+const taoThongTinDinhHuong = (assessment, sections, result) => {
+  const sectionsByType = new Map(sections.map(section => [section.sectionType, section]));
+  const recommendedMajors = Array.isArray(result.recommendedMajors)
+    ? result.recommendedMajors
+    : [];
+  const primaryMajor = recommendedMajors[0] || null;
+
+  return {
+    overview: {
+      fitScore: result.fitScore,
+      fitLevel: result.fitLevel,
+      primaryMajor: primaryMajor?.majorName || null,
+      recommendationCount: recommendedMajors.length
+    },
+    sectionBreakdown: THONG_TIN_PHAN_DANH_GIA.map(({ sectionType, label }) => {
+      const section = sectionsByType.get(sectionType);
+      const notApplicable =
+        (sectionType === 'profile' && assessment.flow === 'flow_b') ||
+        (sectionType === 'career_opportunity' && assessment.audience !== 'freshman');
+
+      return {
+        sectionType,
+        label,
+        applicable: !notApplicable,
+        completed: Boolean(section),
+        score: section?.score ?? null,
+        details: section?.scoreDetails ?? null
+      };
+    }),
+    personalProfile: {
+      hollandCode: result.hollandScores?.topCode || null,
+      hollandScores: result.hollandScores?.normalizedScores || null,
+      personalityType: result.personalityScores?.mbtiType || null,
+      personalityDimensions: result.personalityScores?.dimensions || null,
+      personalityClarityScore: result.personalityScores?.clarityScore ?? null
+    },
+    strengths: result.strengths || [],
+    areasToExplore: result.improvementAreas || [],
+    disclaimer: 'Kết quả và gợi ý chỉ mang tính tham khảo, không phải đánh giá chính xác tuyệt đối hay quyết định thay bạn.'
+  };
+};
+
 // Service chứa các bước xử lý bài trắc nghiệm, tách khỏi phần giao tiếp HTTP.
 const AssessmentService = {
   /**
@@ -363,16 +428,6 @@ const AssessmentService = {
       throw new Error('Không tìm thấy phiên đánh giá');
     };
 
-    // Kiểm tra xem kết quả đã được tính và lưu trước đó chưa
-    let existingResult = await KetQuaDanhGia.findOne({ where: { assessmentId } });
-    if (existingResult) {
-      return {
-        success: true,
-        assessment,
-        result: existingResult
-      };
-    }
-
     // Gom điểm từng phần để tính độ phù hợp với từng ngành.
     const sections = await PhanDanhGia.findAll({ where: { assessmentId } });
     const sectionMap = {};
@@ -380,17 +435,25 @@ const AssessmentService = {
       sectionMap[s.sectionType] = s;
     });
 
+    const majors = await Nganh.findAll({
+      include: [{ model: HoSoNganh, as: 'Profile' }]
+    });
+    const existingResult = await KetQuaDanhGia.findOne({ where: { assessmentId } });
+    if (existingResult && danhSachNganhDaDuocGoiYDayDu(existingResult, majors)) {
+      return {
+        success: true,
+        assessment,
+        result: existingResult,
+        directionAssessment: taoThongTinDinhHuong(assessment, sections, existingResult)
+      };
+    }
+
     // Lấy thông tin chi tiết từng thành phần
     const pDetails = sectionMap['personality']?.scoreDetails || ScoringService.calculatePersonality([]);
     const hDetails = sectionMap['holland']?.scoreDetails || { normalizedScores: { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 }, topCode: 'IRC' };
     const langScore = sectionMap['language']?.score || 65;
     const profScore = sectionMap['profile']?.score || 75;
     const careerScore = sectionMap['career_opportunity']?.score || null;
-
-    // Lấy danh sách toàn bộ các ngành & hồ sơ năng lực ngành
-    const majors = await Nganh.findAll({
-      include: [{ model: HoSoNganh, as: 'Profile' }]
-    });
 
     // Tính điểm phù hợp cho tất cả các ngành
     const majorFitList = majors.map(m => {
@@ -442,37 +505,45 @@ const AssessmentService = {
     // Sắp xếp các ngành theo điểm phù hợp giảm dần
     majorFitList.sort((a, b) => b.fitScore - a.fitScore);
 
-    let primaryFit;
+    const fallbackFit = {
+      majorName: null,
+      fitScore: 0,
+      fitLevel: 'Chưa có dữ liệu ngành',
+      actionRecommendation: 'Danh mục ngành học hiện chưa có dữ liệu để đưa ra gợi ý. Vui lòng thử lại sau.',
+      strengths: [],
+      improvementAreas: []
+    };
+    let primaryFit = majorFitList[0] || fallbackFit;
     let recommendedMajors;
 
     if (assessment.flow === 'flow_b' && assessment.targetMajorId) {
       // Luồng B: Ngành trọng tâm là ngành mục tiêu người dùng đã chọn
-      const targetFit = majorFitList.find(item => item.majorId === assessment.targetMajorId) || majorFitList[0];
+      const targetFit = majorFitList.find(item => item.majorId === assessment.targetMajorId) || primaryFit;
       primaryFit = targetFit;
 
-      // Danh sách gợi ý gồm: ngành mục tiêu + các ngành liên quan hoặc ngành thay thế
-      recommendedMajors = [
-        targetFit,
-        ...majorFitList.filter(item => item.majorId !== targetFit.majorId).slice(0, 9)
-      ];
+      // Đưa toàn bộ ngành trong danh mục vào danh sách để người dùng có thêm lựa chọn.
+      recommendedMajors = targetFit.majorId
+        ? [targetFit, ...majorFitList.filter(item => item.majorId !== targetFit.majorId)]
+        : [];
     } else {
-      // Luồng chính: Top 10 ngành có điểm cao nhất
-      primaryFit = majorFitList[0] || { fitScore: 75, fitLevel: 'Khá phù hợp', actionRecommendation: '' };
-      recommendedMajors = majorFitList.slice(0, 10);
+      // Luồng chính: toàn bộ ngành có trong danh mục, sắp xếp theo điểm phù hợp.
+      recommendedMajors = majorFitList;
     }
 
     // Sinh lời khuyên từ AI
-    const aiAdvice = await AIService.explainAssessmentResult({
-      majorName: primaryFit.majorName,
-      fitScore: primaryFit.fitScore,
-      strengths: primaryFit.strengths,
-      improvementAreas: primaryFit.improvementAreas,
-      mbtiType: pDetails.mbtiType,
-      hollandCode: hDetails.topCode
-    });
+    const aiAdvice = primaryFit.majorId
+      ? await AIService.explainAssessmentResult({
+          majorName: primaryFit.majorName,
+          fitScore: primaryFit.fitScore,
+          strengths: primaryFit.strengths,
+          improvementAreas: primaryFit.improvementAreas,
+          mbtiType: pDetails.mbtiType,
+          hollandCode: hDetails.topCode
+        })
+      : 'Hiện chưa có dữ liệu ngành để tạo lời khuyên cá nhân hóa.';
 
-    // Lưu kết quả cuối cùng vào DB
-    const finalResult = await KetQuaDanhGia.create({
+    // Lưu hoặc bổ sung lại danh sách ngành cho các kết quả đã lưu từ phiên bản cũ.
+    const resultData = {
       assessmentId,
       userId: assessment.userId,
       targetMajorId: assessment.targetMajorId,
@@ -488,7 +559,10 @@ const AssessmentService = {
       strengths: primaryFit.strengths,
       improvementAreas: primaryFit.improvementAreas,
       scoringVersion: 'v1.0.0'
-    });
+    };
+    const finalResult = existingResult
+      ? await existingResult.update(resultData)
+      : await KetQuaDanhGia.create(resultData);
 
     assessment.status = 'completed';
     assessment.currentSection = 'completed';
@@ -497,7 +571,8 @@ const AssessmentService = {
     return {
       success: true,
       assessment,
-      result: finalResult
+      result: finalResult,
+      directionAssessment: taoThongTinDinhHuong(assessment, sections, finalResult)
     };
   },
 };
